@@ -2,77 +2,34 @@ import torch
 import torchvision
 import torch.nn as nn
 
-
-class NNet(torch.nn.Module):
-    def __init__(self, layer_shapes, activation_functions):
-        super(NNet, self).__init__()
-        assert len(layer_shapes) == len(activation_functions) + 1
-        self.layer_shapes = layer_shapes
-        self.activation_functions = activation_functions
-
-        linear_functions = list()
-        for i in range(len(self.layer_shapes)-1):
-            linear_functions.append(torch.nn.Linear(
-                    self.layer_shapes[i], self.layer_shapes[i+1]))
-
-        self.linear_functions = linear_functions
-
-    def parameters(self):
-        parameters = list()
-        for function in self.linear_functions:
-            parameters = parameters+list(function.parameters())
-
-        return parameters
-
-    def forward(self, x):
-        assert x.shape[1] == self.layer_shapes[0]
-        y = x
-        for i in range(len(self.layer_shapes)-1):
-            lin = self.linear_functions[i](y)
-            y = self.activation_functions[i](lin)
-        return y
+class SBL_LSTM_STACK(nn.Module)
+    def __init__(self, input, prev_hs, prev_cs, input_size, rnn_size, num_layers):
+        super(SBL_LSTM_STACK, self).__init__()
+        self.input_size = input_size
+        self.rnn_size = rnn_size
+        self.num_layers = num_layers
+        self.next_hs = {}
+        self.next_cs = {}
+        self.all_layers = {}
+        self.x = {}
+        for L in range(self.num_layers):
+            if L == 1:
+                x = input
+                x_size = self.input_size
+            else:
+                x = self.next_hs[L - 1]
+                x_size = self.rnn_size
+            self.l_i2h = nn.Linear(x_size, 4 * rnn_size)
+            self.l_h2h = nn.Linear(rnn_size, 4 * rnn_size)
+            self.l_bn = nn.BatchNorm1d(4 * rnn_size)
+            self.prev_c = prev_cs[L]
+            self.prev_h = prev_hs[L]
 
 
-batch_size = 100
-epochs = 500
-learning_rate = 0.001
 
-train_set = torchvision.datasets.MNIST(root=
-                                       '../../data',
-                                       train=True,
-                                       transform=torchvision.transforms.ToTensor(),
-                                       download=True)
+    def forwarf(self, input, prev_hs, prev_cs):
 
-test_set = torchvision.datasets.MNIST(root=
-                                      '../../data',
-                                      train=False,
-                                      transform=torchvision.transforms.ToTensor(),
-                                      download=True)
 
-train_loader = torch.utils.data.DataLoader(dataset=train_set,
-                                           batch_size=batch_size,
-                                           shuffle=True)
 
-test_loader = torch.utils.data.DataLoader(dataset=test_set,
-                                          batch_size=batch_size,
-                                          shuffle=False)
 
-model = NNet([784, 16, 10], [torch.nn.Tanh(),
-                                  torch.nn.Softmax(dim=1)])
 
-loss_function = torch.nn.MSELoss()
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate)
-
-loss_items = list()
-
-for t in range(epochs):
-    for i, (images, labels) in enumerate(train_loader):
-        images = images.reshape(-1, 28 * 28)
-
-        outputs = model(images)
-        loss = loss_function(outputs, labels)
-        loss_items.append(loss.item())
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
