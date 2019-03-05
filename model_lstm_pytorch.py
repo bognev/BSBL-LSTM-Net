@@ -2,9 +2,12 @@ import torch
 import torchvision
 import torch.nn as nn
 
-class SBL_LSTM_STACK(nn.Module)
+
+class SblLstmStack(nn.Module):
+
     def __init__(self, input, prev_hs, prev_cs, input_size, rnn_size, num_layers):
-        super(SBL_LSTM_STACK, self).__init__()
+        super(SblLstmStack, self).__init__()
+
         self.input_size = input_size
         self.rnn_size = rnn_size
         self.num_layers = num_layers
