@@ -2,11 +2,13 @@ import torch
 import torchvision
 import torch.nn as nn
 
+def passthrough(x, **kwargs):
+    return x
 
-class SblLstmStack(nn.Module):
+class BuildLstmStack(nn.Module):
 
-    def __init__(self, input, prev_hs, prev_cs, input_size, rnn_size, num_layers):
-        super(SblLstmStack, self).__init__()
+    def __init__(self, inp, prev_hs, prev_cs, input_size, rnn_size, num_layers):
+        super(BuildLstmStack, self).__init__()
 
         self.input_size = input_size
         self.rnn_size = rnn_size
@@ -22,7 +24,7 @@ class SblLstmStack(nn.Module):
         self.tanh = torch.nn.Tanh()
         for L in range(self.num_layers):
             if L == 1:
-                self.x.append(input)
+                self.x.append(inp)
                 self.x_size.append(self.input_size)
             else:
                 self.x.append(self.next_hs[L - 1])
@@ -34,9 +36,7 @@ class SblLstmStack(nn.Module):
             self.prev_c.append(prev_cs[L])
             self.prev_h.append(prev_hs[L])
 
-
-
-    def forward(self, input, prev_hs, prev_cs):
+    def forward(self, inp, prev_hs, prev_cs):
         for L in range(self.num_layers):
             i2h = self.l_i2h(self.x[L])
             h2h = self.l_h2h(self.prev_h[L])
@@ -54,8 +54,23 @@ class SblLstmStack(nn.Module):
             self.next_cs[L] = next_c
         return self.next_hs, self.next_cs
 
+class BuildLstmUnrollNet(nn.Module):
+
+    def __init__(self, num_unroll, num_layers, rnn_size, output_size):
+        super(BuildLstmUnrollNet, self).__init__()
+
+        self.num_unroll = num_unroll
+        self.num_layers = num_layers
+        self.rnn_size = rnn_size
+        self.output_size = output_size
+        self.inp = passthrough
+        self.init_states_input = passthrough
 
 
+    def forward(self, inp):
+        init_states = torch.reshape(self.init_states_input,(self.num_layers * 2, self.rnn_size))
+        for i in xrange(1,self.num_unroll):
+            now_hs, now_cs = BuildLstmStack(inp, now_hs, now_cs, self.num_unroll, self.num_layers, self.rnn_size, self.output_size)
 
 
 
