@@ -54,6 +54,7 @@ class BuildLstmStack(nn.Module):
             self.next_cs[L] = next_c
         return self.next_hs, self.next_cs
 
+
 class BuildLstmUnrollNet(nn.Module):
 
     def __init__(self, num_unroll, num_layers, rnn_size, output_size):
@@ -69,6 +70,10 @@ class BuildLstmUnrollNet(nn.Module):
 
     def forward(self, inp):
         init_states = torch.reshape(self.init_states_input,(self.num_layers * 2, self.rnn_size))
+        init_states_l  = list(torch.split(init_states,2))
+        for i in range(self.num_layers):
+            init_hs[i] =
+
         for i in xrange(1,self.num_unroll):
             now_hs, now_cs = BuildLstmStack(inp, now_hs, now_cs, self.num_unroll, self.num_layers, self.rnn_size, self.output_size)
 
