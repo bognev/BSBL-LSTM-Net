@@ -66,16 +66,29 @@ class BuildLstmUnrollNet(nn.Module):
         self.output_size = output_size
         self.inp = passthrough
         self.init_states_input = passthrough
+        self.init_hs = {}
+        self.init_cs = {}
+        self.out = {}
+        self.out_states_lst = {}
 
-
-    def forward(self, inp):
+    def forward(self):
         init_states = torch.reshape(self.init_states_input,(self.num_layers * 2, self.rnn_size))
-        init_states_l  = list(torch.split(init_states,2))
+        init_states_lst  = list(torch.chunk(init_states,self.rnn_size,1))
         for i in range(self.num_layers):
-            init_hs[i] =
+            self.init_hs[i],self.init_cs[i]  = init_states_lst[i].split(self.num_layers * 2,0)
 
-        for i in xrange(1,self.num_unroll):
-            now_hs, now_cs = BuildLstmStack(inp, now_hs, now_cs, self.num_unroll, self.num_layers, self.rnn_size, self.output_size)
+        self.now_hs, self.now_cs = self.init_hs, self.init_cs
+
+        for i in range(self.num_unroll):
+            self.now_hs, self.now_cs = BuildLstmStack(inp, self.now_hs, self.now_cs, self.num_unroll, self.num_layers, self.rnn_size, self.output_size)
+
+        for i in range(self.num_layers):
+            self.out_states_lst[i*2-1] = self.now_hs[i]
+            self.out_states_lst[i*2] = self.now_cs[i]
+
+        self.out_states = torch.cat(self.out_states_lst,1)
+
+
 
 
 
