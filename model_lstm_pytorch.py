@@ -9,7 +9,7 @@ def passthrough(x, **kwargs):
 
 class BuildLstmStack(nn.Module):
 
-    def __init__(self, input, prev_hs, prev_cs, input_size, rnn_size, num_layers):
+    def __init__(self, input_size, rnn_size, num_layers, input, prev_hs, prev_cs):
         super(BuildLstmStack, self).__init__()
 
         self.input_size = input_size
@@ -77,8 +77,8 @@ class BuildLstmUnrollNet(nn.Module):
         self.output = {}
         self.now_hs = {}
         self.now_cs = {}
-        self.lstmstack = BuildLstmStack(self.input(input), self.now_hs, self.now_cs, self.num_unroll,
-                                                      self.num_layers, self.rnn_size)
+        self.lstmstack = BuildLstmStack(self.num_unroll, self.num_layers, self.rnn_size, self.input(input),
+                                        self.now_hs, self.now_cs)
 
     def forward(self):
         init_states = torch.reshape(self.init_states_input,(self.num_layers * 2, self.rnn_size))
@@ -111,6 +111,7 @@ class GetLstmNet(nn.Module):
 
     def __init__(self, num_unroll, num_layers, rnn_size, output_size):
         super(GetLstmNet,self).__init__()
+
         self.lstm_input = {}
         self.lstm_output = {}
         self.init_states = {}
