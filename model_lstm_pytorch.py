@@ -72,6 +72,7 @@ class BuildLstmUnrollNet(nn.Module):
         self.out_states_lst = {}
         self.outputs = {}
         self.out_states = {}
+        self.output = {}
 
     def forward(self):
         init_states = torch.reshape(self.init_states_input,(self.num_layers * 2, self.rnn_size))
@@ -90,11 +91,9 @@ class BuildLstmUnrollNet(nn.Module):
             self.out_states_lst[i*2] = self.now_cs[i]
 
         self.out_states = torch.cat(self.out_states_lst,1)
-        for i in range(2,self.num_unroll):
-            for j in range (1,self.num_layers):
+#        for i in range(2,self.num_unroll):
+            #for j in range (1,self.num_layers):
                 #do_share_parametrs
-
-
 
         self.output = torch.cat(self.outputs, 1)
 
@@ -105,7 +104,7 @@ class BuildLstmUnrollNet(nn.Module):
 class GetLstmNet(nn.Module):
 
     def __init__(self, num_unroll, num_layers, rnn_size, output_size):
-        super(GetLstmNet,self)._init()__()
+        super(GetLstmNet,self).__init__()
 
         self.num_unroll, self.num_layers, self.rnn_size, self.output_size = num_unroll, num_layers, rnn_size, output_size
         self.lstm_input, self.lstm_output, self.init_states, self.out_states = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.output_size)
@@ -119,6 +118,17 @@ class GetLstmNet(nn.Module):
 
 
 
+###########Usage#######################################
+input_size = 20
+output_size = 100
+rnn_size = 100
+num_layers = 3
+num_unroll = 5
+net = GetLstmNet(output_size, rnn_size, num_layers, num_unroll)
+x = torch.rand(5,20)
+z = torch.zeros(5, rnn_size * num_layers * 2)
+#y = net.train()
+output = net(x,z)
 
 
 
