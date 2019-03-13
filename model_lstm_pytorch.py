@@ -24,6 +24,13 @@ class BuildLstmStack(nn.Module):
         self.prev_h = []
         self.sigmoid = torch.nn.Sigmoid()
         self.tanh = torch.nn.Tanh()
+        self.x = {}
+        self.x_size = {}
+        self.prev_cs = prev_cs
+        self.prev_hs = prev_hs
+
+
+    def forward(self):
         for L in range(self.num_layers):
             if L == 1:
                 self.x.append(input)
@@ -35,11 +42,9 @@ class BuildLstmStack(nn.Module):
             self.l_i2h.append(nn.Linear(self.x_size[L], 4 * self.rnn_size))
             self.l_h2h.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
             self.l_bn.append(nn.BatchNorm1d(4 * self.rnn_size))
-            self.prev_c.append(prev_cs[L])
-            self.prev_h.append(prev_hs[L])
+            self.prev_c.append(sefl.prev_cs[L])
+            self.prev_h.append(self.prev_hs[L])
 
-    def forward(self):
-        for L in range(self.num_layers):
             i2h = self.l_i2h(self.x[L])
             h2h = self.l_h2h(self.prev_h[L])
             all_sums = i2h + h2h
@@ -139,7 +144,7 @@ model = GetLstmNet(output_size, rnn_size, num_layers, num_unroll)
 x = torch.rand(5,20)
 z = torch.zeros(5, rnn_size * num_layers * 2)
 #y = net.train()
-output = model({x, z})
+output = model(x)
 
 
 
