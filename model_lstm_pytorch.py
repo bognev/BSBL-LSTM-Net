@@ -9,7 +9,7 @@ def passthrough(x, **kwargs):
 
 class BuildLstmStack(nn.Module):
 
-    def __init__(self, input_size, rnn_size, num_layers, input, prev_hs, prev_cs):
+    def __init__(self, input_size, rnn_size, num_layers):
         super(BuildLstmStack, self).__init__()
 
         self.input_size = input_size
@@ -24,69 +24,71 @@ class BuildLstmStack(nn.Module):
         self.prev_h = []
         self.sigmoid = torch.nn.Sigmoid()
         self.tanh = torch.nn.Tanh()
-        self.x = {}
-        self.x_size = {}
-        self.prev_cs = prev_cs
-        self.prev_hs = prev_hs
+        #self.prev_cs = prev_cs
+        #elf.prev_hs = prev_hs
+        self.l_i2h = nn.Linear(self.x_size, 4 * self.rnn_size)
+        self.l_h2h = nn.Linear(self.rnn_size, 4 * self.rnn_size)
+        self.l_bn = nn.BatchNorm1d(4 * self.rnn_size)
 
-
-    def forward(self):
+    def forward(self, input_x, prev_hs, prev_cs):
         for L in range(self.num_layers):
             if L == 1:
-                self.x.append(input)
-                self.x_size.append(self.input_size)
+                self.x = input_x
+                self.x_size = self.input_size
             else:
-                self.x.append(self.next_hs[L - 1])
-                self.x_size.append(self.rnn_size)
+                self.x = self.next_hs[L-1]
+                self.x_size = self.rnn_size
 
-            self.l_i2h.append(nn.Linear(self.x_size[L], 4 * self.rnn_size))
-            self.l_h2h.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
-            self.l_bn.append(nn.BatchNorm1d(4 * self.rnn_size))
-            self.prev_c.append(sefl.prev_cs[L])
-            self.prev_h.append(self.prev_hs[L])
+            #self.l_i2h.append(nn.Linear(self.x_size[L], 4 * self.rnn_size))
+            #self.l_h2h.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
+            #self.l_bn.append(nn.BatchNorm1d(4 * self.rnn_size))
+            self.prev_c = prev_cs[L]
+            self.prev_h = prev_hs[L]
 
-            i2h = self.l_i2h(self.x[L])
-            h2h = self.l_h2h(self.prev_h[L])
+            i2h = self.l_i2h(self.x)
+            h2h = self.l_h2h(self.prev_h)
             all_sums = i2h + h2h
             (n1, n2, n3, n4) = torch.split(all_sums, self.rnn_size, dim=1)  # it should return 4 tensors
-            in_gate = self.sigmoid(n1)
-            forget_gate = self.sigmoid(n3)
-            out_gate = self.sigmoid(n3)
-            in_transform = self.tanh(n4)
-            next_c1 = forget_gate*self.prev_c[L]
-            next_c2 = in_gate*in_transform
-            next_c = next_c1 + next_c2
-            next_h = out_gate * self.tanh(next_c)
-            self.next_hs[L] = next_h
-            self.next_cs[L] = next_c
+
+        in_gate = self.sigmoid(n1)
+        forget_gate = self.sigmoid(n2)
+        out_gate = self.sigmoid(n3)
+        in_transform = self.tanh(n4)
+        next_c = forget_gate*self.prev_c + in_gate*in_transform
+        next_h = out_gate * self.tanh(next_c)
+        self.next_hs[L] = next_h
+        self.next_cs[L] = next_c
         return self.next_hs, self.next_cs
 
 
 class BuildLstmUnrollNet(nn.Module):
 
-    def __init__(self, input, num_unroll, num_layers, rnn_size):
+    def __init__(self, num_unroll, num_layers, rnn_size):
         super(BuildLstmUnrollNet, self).__init__()
 
         self.num_unroll = num_unroll
         self.num_layers = num_layers
         self.rnn_size = rnn_size
-        self.output_size = output_size
+
+        #self.output_size = output_size
         self.input = passthrough
         self.init_states_input = passthrough
-        self.init_hs = {}
-        self.init_cs = {}
-        self.out = {}
-        self.out_states_lst = {}
-        self.outputs = {}
-        self.out_states = {}
-        self.output = {}
-        self.now_hs = {}
-        self.now_cs = {}
-        self.lstmstack = BuildLstmStack(self.num_unroll, self.num_layers, self.rnn_size, self.input(input),
-                                        self.now_hs, self.now_cs)
+
+        self.init_hs = []
+        self.init_cs = []
+
+        self.out = []
+        self.out_states_lst = []
+        self.outputs = []
+        self.out_states = []
+        self.output = []
+        self.now_hs = []
+        self.now_cs = []
+        self.buildlstmstack = BuildLstmStack(self.input_size, self.rnn_size, self.num_layers)
 
     def forward(self):
         init_states = torch.reshape(self.init_states_input,(self.num_layers * 2, self.rnn_size))
+
         init_states_lst  = list(torch.chunk(init_states,self.rnn_size,1))
         for i in range(self.num_layers):
             self.init_hs[i],self.init_cs[i]  = init_states_lst[i].split(self.num_layers * 2,0)
@@ -94,8 +96,7 @@ class BuildLstmUnrollNet(nn.Module):
         self.now_hs, self.now_cs = self.init_hs, self.init_cs
 
         for i in range(self.num_unroll):
-            self.now_hs, self.now_cs = self.lstmstack(self.input(input), self.now_hs, self.now_cs, self.num_unroll,
-                                                      self.num_layers, self.rnn_size)
+            self.now_hs, self.now_cs = self.buildlstmstack(self.input, self.now_hs, self.now_cs)
             self.outputs[i] = self.now_hs[len(self.now_hs)-1]
 
         for i in range(self.num_layers):
@@ -127,8 +128,8 @@ class GetLstmNet(nn.Module):
         self.pred = {}
         self.lstmnet = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.output_size)
 
-    def forward(self):
-        self.lstm_input, self.lstm_output, self.init_states, self.out_states = self.lstmnet(self.num_unroll, self.num_layers, self.rnn_size, self.output_size)
+    def forward(self, x):
+        self.lstm_input, self.lstm_output, self.init_states, self.out_states = self.lstmnet()#self.num_unroll, self.num_layers, self.rnn_size, self.output_size)
         self.pred = self.l_pred_l(self.lstm_output)
 
 
