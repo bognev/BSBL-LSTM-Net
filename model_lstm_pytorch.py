@@ -15,8 +15,6 @@ class BuildLstmStack(nn.Module):
         self.input_size = input_size
         self.rnn_size = rnn_size
         self.num_layers = num_layers
-        self.next_hs = []
-        self.next_cs = []
         self.all_layers = []
         self.x = []
         self.x_size = []
@@ -31,12 +29,14 @@ class BuildLstmStack(nn.Module):
         self.l_bn = nn.BatchNorm1d(4 * self.rnn_size)
 
     def forward(self, input_x, prev_hs, prev_cs):
+        next_hs = []
+        next_cs = []
         for L in range(self.num_layers):
             if L == 1:
                 self.x = input_x
                 self.x_size = self.input_size
             else:
-                self.x = self.next_hs[L-1]
+                self.x = next_hs[L-1]
                 self.x_size = self.rnn_size
 
             #self.l_i2h.append(nn.Linear(self.x_size[L], 4 * self.rnn_size))
@@ -56,9 +56,9 @@ class BuildLstmStack(nn.Module):
         in_transform = self.tanh(n4)
         next_c = forget_gate*self.prev_c + in_gate*in_transform
         next_h = out_gate * self.tanh(next_c)
-        self.next_hs[L] = next_h
-        self.next_cs[L] = next_c
-        return self.next_hs, self.next_cs
+        next_hs[L] = next_h
+        next_cs[L] = next_c
+        return next_hs, next_cs
 
 
 class BuildLstmUnrollNet(nn.Module):
@@ -70,8 +70,6 @@ class BuildLstmUnrollNet(nn.Module):
         self.num_layers = num_layers
         self.rnn_size = rnn_size
 
-        #self.output_size = output_size
-        self.input = passthrough
         self.init_states_input = passthrough
 
         self.init_hs = []
