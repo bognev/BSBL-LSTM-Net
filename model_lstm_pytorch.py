@@ -53,7 +53,7 @@ class BuildLstmStack(nn.Module):
             i2h = self.l_i2h[L](self.x)
             h2h = self.l_h2h(self.prev_h)
             all_sums = i2h + h2h
-            print(all_sums.size())
+
             (n1, n2, n3, n4) = all_sums.chunk(4, dim=2)  # it should return 4 tensors self.rnn_size
 
             in_gate = self.sigmoid(n1)
@@ -105,6 +105,8 @@ class BuildLstmUnrollNet(nn.Module):
 
         for i in range(self.num_unroll):
             self.now_hs, self.now_cs = self.buildlstmstack(x, self.now_hs, self.now_cs)
+            a=self.now_hs[len(self.now_hs) - 1]
+            print(a.size())
             self.outputs.append(self.now_hs[len(self.now_hs)-1])
 
         for i in range(self.num_layers):
@@ -112,12 +114,12 @@ class BuildLstmUnrollNet(nn.Module):
             self.out_states_lst.append(self.now_cs[i])
 
 
-        self.out_states = torch.cat(self.out_states_lst,1)
+        #self.out_states = torch.cat(self.out_states_lst,1)
         # for i in range(2,self.num_unroll):
         # for j in range (1,self.num_layers):
         # do_share_parametrs
 
-        self.output = torch.cat(self.outputs, 1)
+        self.output = torch.cat(self.outputs, 2)
 
         return self.output
 
@@ -139,7 +141,9 @@ class GetLstmNet(nn.Module):
 
     def forward(self, x, init_states_input):
         self.lstm_output = self.lstmnet(x, init_states_input)
+        print(self.lstm_output.size())
         self.pred = self.l_pred_l(self.lstm_output)
+        print(self.pred.size())
         return self.pred
 
 
@@ -156,6 +160,7 @@ x = torch.rand(3,20)
 z = torch.zeros(3,rnn_size * num_layers * 2)
 #y = net.train()
 output = model(x,z)
+print(output.size())
 
 
 
