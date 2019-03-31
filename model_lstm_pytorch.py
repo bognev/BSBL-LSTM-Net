@@ -163,6 +163,34 @@ output = model(x,z)
 print(output.size())
 
 
+gpu = 1 # gpu id
+batch_size = 250 # training batch size
+lr = 0.001 # basic learning rate
+lr_decay_startpoint = 250 #learning rate from which epoch
+num_epochs = 400 # total training epochs
+max_grad_norm = 5.0
+clip_gradient = 4.0
+
+# task related parameters
+# task: y = Ax, given A recovery sparse x from y
+dataset = 'uniform' # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), unit (+-1)
+num_nonz = 3 # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
+input_size = 20 # dimension of observation vector y
+output_size = 100 # dimension of sparse vector x
+
+# model hyper parameters
+rnn_size = 425 # number of units in RNN cell
+num_layers = 2 # number of stacked RNN layers
+num_unroll = 11 # number of RNN unrolled time steps
+
+torch.set_num_threads(4)
+manualSeed = torch.randint(1,10000,(1,))
+print("Random seed " + str(manualSeed.item()))
+torch.set_default_tensor_type(torch.FloatTensor)
+
+
+
+
 
 
 
