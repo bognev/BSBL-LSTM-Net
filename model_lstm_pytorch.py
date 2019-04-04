@@ -1,7 +1,7 @@
 import torch
 import torchvision
 import torch.nn as nn
-
+import torch.optim as optim
 
 def passthrough(x, **kwargs):
     return x
@@ -160,7 +160,7 @@ x = torch.rand(3,20)
 z = torch.zeros(3,rnn_size * num_layers * 2)
 #y = net.train()
 output = model(x,z)
-print(output.size())
+print(model)
 
 
 gpu = 1 # gpu id
@@ -187,6 +187,29 @@ torch.set_num_threads(4)
 manualSeed = torch.randint(1,10000,(1,))
 print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
+
+
+# create a stochastic gradient descent optimizer
+optimizer = optim.RMSprop(model.parameters(), lr=lr)
+# create a loss function
+criterion = nn.NLLLoss()
+
+# run the main training loop
+for epoch in range(epochs):
+    for batch_idx, (data, target) in enumerate(train_loader):
+                data, target = data, target
+            # resize data from (batch_size, 1, 28, 28) to (batch_size, 28*28)
+            data = data.view(-1, 28*28)
+            optimizer.zero_grad()
+            net_out = model(data)
+            loss = criterion(net_out, target)
+            loss.backward()
+            optimizer.step()
+            if batch_idx % log_interval == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch, batch_idx * len(data), len(train_loader.dataset),
+                           100. * batch_idx / len(train_loader), loss.data[0]))
+
 
 
 
