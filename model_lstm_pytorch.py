@@ -224,7 +224,7 @@ batch_label = torch.zeros(batch_size, num_nonz) # for MultiClassNLLCriterion LOS
 batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2) #init_states for lstm
 
 AccM, AccL, Accs = 0, 0, 0
-mat_A = loadmat('matrix_corr_unit_20_100.mat')
+
 
 err = 0
 
@@ -234,6 +234,16 @@ err =  MultiClassNLLCriterion(pred_prob, batch_label)
 print(t, err.item())
 net.zero_grad()
 df_dpred = err.backward()
+
+
+mat_A = loadmat('matrix_corr_unit_20_100.mat')
+batch_X = torch.Tensor(batch_size, 100)
+batch_n = torch.Tensor(batch_size, num_nonz)
+
+def gen_batch():
+    bs = batch_size
+    len = 100 / num_nonz*num_nonz
+    perm = torch.randperm(len)
 
 
 
