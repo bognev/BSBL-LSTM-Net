@@ -2,6 +2,7 @@ import torch
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
+from mat4py import loadmat
 
 def passthrough(x, **kwargs):
     return x
@@ -150,17 +151,34 @@ class GetLstmNet(nn.Module):
 
 ###########Usage#######################################
 
-input_size = 20
-output_size = 100
-rnn_size = 100
-num_layers = 3
-num_unroll = 5
-model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-x = torch.rand(3,20)
-z = torch.zeros(3,rnn_size * num_layers * 2)
-#y = net.train()
-output = model(x,z)
-print(model)
+# input_size = 20
+# output_size = 100
+# rnn_size = 100
+# num_layers = 3
+# num_unroll = 5
+# model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+# x = torch.rand(3,20)
+# z = torch.zeros(3,rnn_size * num_layers * 2)
+# #y = net.train()
+# output = model(x,z)
+# print(model)
+
+
+class MultiClassNLLCriterion(torch.nn.Module):
+
+    def __init__(self):
+        super(MultiClassNLLCriterion, self).__init__()
+        self.lsm = nn.LogSoftmax()
+        self.nll = nn.NLLLoss()
+        output = 0
+
+    def forward(self, inputs, target):
+        outputs = self.lsm(inputs)
+        shape = target.shape
+        for i in range(1,shape[1]):
+            outputs += self.nll(self.output,target)
+
+        return outputs/shape[1]
 
 
 gpu = 1 # gpu id
@@ -188,11 +206,38 @@ manualSeed = torch.randint(1,10000,(1,))
 print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
 
-
+net = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+print(net)
 # create a stochastic gradient descent optimizer
-optimizer = optim.RMSprop(model.parameters(), lr=lr)
-# create a loss function
-criterion = nn.NLLLoss()
+optimizer = optim.RMSprop(net.parameters(), lr=lr)
+# create a loss func588888888888888888888tion
+#LOSS = MultiClassNLLCriterion()
+
+
+
+train_size = 600000
+valid_size = 100000
+valid_data = torch.zeros(valid_size, input_size)
+valid_label = torch.zeros(valid_size, num_nonz)
+batch_data = torch.zeros(batch_size, input_size)
+batch_label = torch.zeros(batch_size, num_nonz) # for MultiClassNLLCriterion LOSS
+batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2) #init_states for lstm
+
+AccM, AccL, Accs = 0, 0, 0
+mat_A = loadmat('matrix_corr_unit_20_100.mat')
+
+err = 0
+
+
+pred_prob = net(batch_data, batch_zero_states)
+err =  MultiClassNLLCriterion(pred_prob, batch_label)
+print(t, err.item())
+net.zero_grad()
+df_dpred = err.backward()
+
+
+
+
 
 # run the main training loop
 for epoch in range(epochs):
