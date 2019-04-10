@@ -243,7 +243,27 @@ batch_n = torch.Tensor(batch_size, num_nonz)
 def gen_batch():
     bs = batch_size
     len = 100 / num_nonz*num_nonz
-    perm = torch.randperm(len)
+    perm = torch.randperm(100)[range(len)]
+    for i in range(1,bs*num_nonz/len):
+        perm = torch.cat(perm, torch.ramperm(100)[range(10)])
+    batch_label.copy(perm[range(1, bs*num_nonz)].reshape([bs, num_nonz]))
+    batch_X.zero_()
+    if dataset == 'uniform':
+        batch_n.uniform_(-1,1)
+        batch_n[batch_n.gt(0)] = 1
+        batch_n[batch_n.le(0)] = -1
+    for i in range(bs):
+        for j in range(num_nonz):
+            batch_X[i][batch_label[i][j]] = batch_n[i][j]
+    batch_data.copy(batch_X * mat_A)
+
+
+
+
+
+
+
+
 
 
 
