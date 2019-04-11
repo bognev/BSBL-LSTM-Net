@@ -3,6 +3,7 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from mat4py import loadmat
+import time
 
 def passthrough(x, **kwargs):
     return x
@@ -235,6 +236,13 @@ print(t, err.item())
 net.zero_grad()
 df_dpred = err.backward()
 
+model_all = "model_l_"+str(num_layers)+"t_"+str(num_unroll)+'_rnn_'+ str(rnn_size)
+logger_file = model_all+str(dataset)+"_"+str(num_nonz)+'.log'
+logger = open(logger_file, 'w')
+#for k,v in pairs(opt) do logger:write(k .. ' ' .. v ..'\n') end
+#logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
+#logger:close()
+
 
 mat_A = loadmat('matrix_corr_unit_20_100.mat')
 batch_X = torch.Tensor(batch_size, 100)
@@ -256,6 +264,36 @@ def gen_batch():
         for j in range(num_nonz):
             batch_X[i][batch_label[i][j]] = batch_n[i][j]
     batch_data.copy(batch_X * mat_A)
+
+print("building validation set")
+for i in range(1, valid_size, batch_size):
+    gen_batch()
+    valid_data[range(i,i+batch_size-1)][:].copy(batch_data)
+    valid_label[range(i, i + batch_size - 1)][:].copy(batch_label)
+print('done')
+
+best_valid_accs = 0
+base_epoch = lr_decay_startpoint
+base_lr = lr
+optimRate = {'learningRate' : 0.001, 'weigthDecay' : 0.001}
+
+
+end = time. time()
+print(end - start)
+for epoch in range(1,num_epochs):
+    #learing rate self - adjustment
+    if(epoch > 250):
+        optimRate['learningRate'] = base_lr / (1 + 0.06 * (epoch - base_epoch))
+        if(epoch % 50 == 0): base_epoch = epoch; base_lr= base_lr * 0.25
+    logger = open(logger_file, 'a')
+    #train
+    train_accs = 0
+    train_accl = 0
+    rain_accm = 0
+    train_err = 0
+    nbatch = 0
+    start = time.time()
+    for i in range(1,train_size,batch_size):
 
 
 
