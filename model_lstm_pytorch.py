@@ -181,6 +181,44 @@ class MultiClassNLLCriterion(torch.nn.Module):
 
         return outputs/shape[1]
 
+#match number
+def AccS(label, pred_prob):
+    num_nonz = label.shape[1]
+    _, pred = pred_prob.topk(num_nonz,1,True) #?!
+    pred = pred.float()
+    t_score = torch.zeros(label.shape)
+    for i in range(1, num_nonz):
+        for j in range(1, num_nonz):
+            t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
+    return t_score.mean()
+#loose match
+def AccL(label, pred_prob):
+    num_nonz = label.shape[1]
+    _, pred = pred_prob.topk(20,1,True) #?!
+    pred = pred.float()
+    t_score = torch.zeros(label.shape)
+    for i in range(1, num_nonz):
+        for j in range(1, 20):
+            t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
+    return t_score.mean()
+#sctrict match
+def AccM(label, pred_prob):
+    num_nonz = label.shape[1]
+    _, pred = pred_prob.topk(num_nonz,1,True) #?!
+    pred = pred.float()
+    t_score = torch.zeros(label.shape)
+    for i in range(1, num_nonz):
+        for j in range(1, 20):
+            t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
+    return t_score.sum(2).eq(num_nonz).sum() * 1./ pred.shape[1]
+
+
+
+
+
+
+
+
 
 gpu = 1 # gpu id
 batch_size = 250 # training batch size
@@ -207,15 +245,6 @@ manualSeed = torch.randint(1,10000,(1,))
 print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
 
-net = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-print(net)
-# create a stochastic gradient descent optimizer
-optimizer = optim.RMSprop(net.parameters(), lr=lr)
-# create a loss func588888888888888888888tion
-#LOSS = MultiClassNLLCriterion()
-
-
-
 train_size = 600000
 valid_size = 100000
 valid_data = torch.zeros(valid_size, input_size)
@@ -230,11 +259,6 @@ AccM, AccL, Accs = 0, 0, 0
 err = 0
 
 
-pred_prob = net(batch_data, batch_zero_states)
-err =  MultiClassNLLCriterion(pred_prob, batch_label)
-print(t, err.item())
-net.zero_grad()
-df_dpred = err.backward()
 
 model_all = "model_l_"+str(num_layers)+"t_"+str(num_unroll)+'_rnn_'+ str(rnn_size)
 logger_file = model_all+str(dataset)+"_"+str(num_nonz)+'.log'
@@ -250,11 +274,13 @@ batch_n = torch.Tensor(batch_size, num_nonz)
 
 def gen_batch():
     bs = batch_size
-    len = 100 / num_nonz*num_nonz
-    perm = torch.randperm(100)[range(len)]
-    for i in range(1,bs*num_nonz/len):
-        perm = torch.cat(perm, torch.ramperm(100)[range(10)])
-    batch_label.copy(perm[range(1, bs*num_nonz)].reshape([bs, num_nonz]))
+    len = int(100 / num_nonz*num_nonz)
+    print(len)
+    perm = torch.randperm(100)[range(1,len)]
+    print(bs*num_nonz/len)
+    for i in range(1, int(bs*num_nonz/len)):
+        perm = torch.cat((perm, torch.randperm(100)[range(1,len)]))
+    batch_label.copy_(perm[range(1, bs*num_nonz)].reshape([bs, num_nonz]))
     batch_X.zero_()
     if dataset == 'uniform':
         batch_n.uniform_(-1,1)
@@ -277,9 +303,14 @@ base_epoch = lr_decay_startpoint
 base_lr = lr
 optimRate = {'learningRate' : 0.001, 'weigthDecay' : 0.001}
 
+net = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+print(net)
+# create a stochastic gradient descent optimizer
+optimizer = optim.RMSprop(net.parameters(), lr=lr)
+# create a loss function
+LOSS = MultiClassNLLCriterion()
 
-end = time. time()
-print(end - start)
+
 for epoch in range(1,num_epochs):
     #learing rate self - adjustment
     if(epoch > 250):
@@ -294,6 +325,70 @@ for epoch in range(1,num_epochs):
     nbatch = 0
     start = time.time()
     for i in range(1,train_size,batch_size):
+        gen_batch()
+        net.train()
+        optimizer.zero_grad()
+        pred_prob = net(batch_data, batch_zero_states)
+        err = LOSS(pred_prob, batch_label)
+        print("loss = ", err.item())
+        df_dpred = err.backward()
+        optimizer.step()
+        batch_accs = AccS(batch_label[:, range(1, num_nonz)], net.output[1].float())
+        batch_accl = AccL(batch_label[:, range(1, num_nonz)], net.output[1].float())
+        batch_accm = AccM(batch_label[:, range(1, num_nonz)], net.output[1].float())
+        train_accs = train_accs + batch_accs
+        train_accl = train_accl + batch_accl
+        train_accm = train_accm + batch_accm
+        train_err = train_err + err
+        nbatch = nbatch + 1
+        if nbatch % 512 == 1:
+            print("%.4f %.4f %.4f err %.4f", batch_accs, batch_accl, batch_accm, err)
+    print("Train [%d] Time %.3f s-acc %.4f l-acc %.4f m-acc %.4f err %.4f",epoch, time.time().real,\
+        train_accs / nbatch, train_accl / nbatch, train_accm / nbatch, train_err / nbatch)
+    logger.write("Train [%d] Time %.3f s-acc %.4f l-acc %.4f m-acc %.4f err %.4f\n", epoch, time.time().real,\
+        train_accs / nbatch, train_accl / nbatch, train_accm / nbatch, train_err / nbatch)
+    end = time.time()
+    #eval
+    nbatch = 0
+    valid_accs = 0
+    valid_accl = 0
+    valid_accm = 0
+    valid_err = 0
+    for i in range(1,valid_size,batch_size):
+        batch_data.copy(valid_data[range(i,i+batch_size-1),:])
+        net.eval()
+        pred_prob = net(batch_data,batch_zero_states).float()
+        err = LOSS(pred_prob, batch_label)
+        batch_accs = AccS(batch_label[:, range(1, num_nonz)], net.output[1].float())
+        batch_accl = AccL(batch_label[:, range(1, num_nonz)], net.output[1].float())
+        batch_accm = AccM(batch_label[:, range(1, num_nonz)], net.output[1].float())
+        valid_accs = valid_accs + batch_accs
+        valid_accl = valid_accl + batch_accl
+        valid_accm = valid_accm + batch_accm
+        valid_err = valid_err + err
+        nbatch = nbatch + 1
+    print("Valid [%d] Time %.3f s-acc %.4f l-acc %.4f m-acc %.4f err %.4f", epoch, time.time().real, \
+          valid_accs / nbatch, valid_accl / nbatch, valid_accm / nbatch, valid_err / nbatch)
+    logger.write("Valid [%d] Time %.3f s-acc %.4f l-acc %.4f m-acc %.4f err %.4f\n", epoch, time.time().real, \
+                 valid_accs / nbatch, valid_accl / nbatch, valid_accm / nbatch, valid_err / nbatch)
+    if(valid_accs > best_valid_accs):
+        best_valid_accs = valid_accs
+        print("saving model")
+        logger.write('saving model\n')
+        torch.save(net.state_dict(), "./checkpoints/"+model_all+"."+str(num_nonz)+".pt") #or torch.save(net, PATH)
+        #net.load_state_dict(torch.load(PATH)) # or the_model = torch.load(PATH)
+
+    if(epoch % 100 == 0):
+        print("saving model")
+        torch.save(net.state_dict(), "./checkpoints/" + model_all + "." + str(num_nonz) + "."+str(epoch)+".pt")  # or torch.save(net, PATH)
+
+    logger.close()
+    if epoch == lr_decay_startpoint:
+        optimState["learningRate"] = 0.001
+        optimState["weightDecay"] = 0.001
+
+
+#print(end - start)
 
 
 
@@ -307,21 +402,24 @@ for epoch in range(1,num_epochs):
 
 
 
-# run the main training loop
-for epoch in range(epochs):
-    for batch_idx, (data, target) in enumerate(train_loader):
-    data, target = data, target
-    # resize data from (batch_size, 1, 28, 28) to (batch_size, 28*28)
-    data = data.view(-1, 28*28)
-    optimizer.zero_grad()
-    net_out = model(data)
-    loss = criterion(net_out, target)
-    loss.backward()
-    optimizer.step()
-    if batch_idx % log_interval == 0:
-        print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-        epoch, batch_idx * len(data), len(train_loader.dataset),
-        100. * batch_idx / len(train_loader), loss.data[0]))
+
+
+
+# # run the main training loop
+# for epoch in range(epochs):
+#     for batch_idx, (data, target) in enumerate(train_loader):
+#     data, target = data, target
+#     # resize data from (batch_size, 1, 28, 28) to (batch_size, 28*28)
+#     data = data.view(-1, 28*28)
+#     optimizer.zero_grad()
+#     net_out = model(data)
+#     loss = criterion(net_out, target)
+#     loss.backward()
+#     optimizer.step()
+#     if batch_idx % log_interval == 0:
+#         print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+#         epoch, batch_idx * len(data), len(train_loader.dataset),
+#         100. * batch_idx / len(train_loader), loss.data[0]))
 
 
 
