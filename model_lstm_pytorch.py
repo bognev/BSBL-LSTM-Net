@@ -96,10 +96,10 @@ class BuildLstmUnrollNet(nn.Module):
         init_states = init_states_input.reshape((init_states_input.size(0),self.num_layers * 2, self.rnn_size))
 
         init_states_lst  = list(init_states.chunk(self.num_layers * 2,1))
-        print()
+        #print()
         for i in range(self.num_layers):
 
-            print(i)
+            #print(i)
             self.init_hs.append(init_states_lst[2*i])
             self.init_cs.append(init_states_lst[2*i+1])
 
@@ -108,7 +108,7 @@ class BuildLstmUnrollNet(nn.Module):
         for i in range(self.num_unroll):
             self.now_hs, self.now_cs = self.buildlstmstack(x, self.now_hs, self.now_cs)
             a=self.now_hs[len(self.now_hs) - 1]
-            print(a.size())
+            #print(a.size())
             self.outputs.append(self.now_hs[len(self.now_hs)-1])
 
         for i in range(self.num_layers):
@@ -145,7 +145,7 @@ class GetLstmNet(nn.Module):
         self.lstm_output = self.lstmnet(x, init_states_input)
         print(self.lstm_output.size())
         self.pred = self.l_pred_l(self.lstm_output)
-        print(self.pred.size())
+        #print(self.pred.size())
         return self.pred
 
 
@@ -171,15 +171,18 @@ class MultiClassNLLCriterion(torch.nn.Module):
         super(MultiClassNLLCriterion, self).__init__()
         self.lsm = nn.LogSoftmax()
         self.nll = nn.NLLLoss()
-        output = 0
+        self.output = 0
 
     def forward(self, inputs, target):
-        outputs = self.lsm(inputs)
+        self.output = self.lsm(inputs)
         shape = target.shape
-        for i in range(1,shape[1]):
-            outputs += self.nll(self.output,target)
-
+        outputs = 0
+        print(self.output.shape)
+        print(target.shape)
+        for i in range(0,shape[1]):
+            outputs += self.nll(self.output,target[:,i].squeeze_())
         return outputs/shape[1]
+
 
 #match number
 def AccS(label, pred_prob):
@@ -212,19 +215,11 @@ def AccM(label, pred_prob):
             t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
     return t_score.sum(2).eq(num_nonz).sum() * 1./ pred.shape[1]
 
-
-
-
-
-
-
-
-
 gpu = 1 # gpu id
-batch_size = 250 # training batch size
+batch_size = 25#250 # training batch size
 lr = 0.001 # basic learning rate
 lr_decay_startpoint = 250 #learning rate from which epoch
-num_epochs = 400 # total training epochs
+num_epochs = 4#00 # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
 
@@ -245,8 +240,8 @@ manualSeed = torch.randint(1,10000,(1,))
 print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
 
-train_size = 600000
-valid_size = 100000
+train_size = 600#600000
+valid_size = 100#100000
 valid_data = torch.zeros(valid_size, input_size)
 valid_label = torch.zeros(valid_size, num_nonz)
 batch_data = torch.zeros(batch_size, input_size)
@@ -268,40 +263,52 @@ logger = open(logger_file, 'w')
 #logger:close()
 
 
-mat_A = loadmat('matrix_corr_unit_20_100.mat')
-batch_X = torch.Tensor(batch_size, 100)
-batch_n = torch.Tensor(batch_size, num_nonz)
 
-def gen_batch():
+
+def gen_batch(batch_size, num_nonz):
+    mat_A = loadmat('matrix_corr_unit_20_100.mat')
+    mat_A = torch.FloatTensor(mat_A['A']).t()
+    #print(mat_A.shape)
+    batch_X = torch.Tensor(batch_size, 100)
+    batch_n = torch.Tensor(batch_size, num_nonz)
     bs = batch_size
     len = int(100 / num_nonz*num_nonz)
-    print(len)
     perm = torch.randperm(100)[range(1,len)]
-    print(bs*num_nonz/len)
-    for i in range(1, int(bs*num_nonz/len)):
+    batch_label = torch.zeros(batch_size, num_nonz)  # for MultiClassNLLCriterion LOSS
+    for i in range(int(bs*num_nonz/len)):
         perm = torch.cat((perm, torch.randperm(100)[range(1,len)]))
-    batch_label.copy_(perm[range(1, bs*num_nonz)].reshape([bs, num_nonz]))
+    batch_label.copy_(perm[range(bs*num_nonz)].reshape([bs, num_nonz]))
+    batch_label = batch_label.type(torch.LongTensor)
     batch_X.zero_()
     if dataset == 'uniform':
         batch_n.uniform_(-1,1)
         batch_n[batch_n.gt(0)] = 1
         batch_n[batch_n.le(0)] = -1
+    #
+    #print(batch_X.shape)
     for i in range(bs):
         for j in range(num_nonz):
             batch_X[i][batch_label[i][j]] = batch_n[i][j]
-    batch_data.copy(batch_X * mat_A)
+    batch_data.copy_(torch.mm(batch_X, mat_A))
+    print(batch_label.shape)
+    print(batch_data.shape)
+    return batch_label, batch_data
 
 print("building validation set")
-for i in range(1, valid_size, batch_size):
-    gen_batch()
-    valid_data[range(i,i+batch_size-1)][:].copy(batch_data)
-    valid_label[range(i, i + batch_size - 1)][:].copy(batch_label)
+for i in range(0, valid_size, batch_size):
+    batch_label, batch_data = gen_batch(batch_size, num_nonz)
+    print(batch_label.shape)
+    print("batch_data shape = " + str(batch_data.shape))
+    print("valid_data shape = " + str(valid_data.shape))
+    print(range(i,i+batch_size-1))
+    valid_data[range(i,i+batch_size), :].copy_(batch_data)
+    valid_label[range(i, i + batch_size)][:].copy_(batch_label)
 print('done')
 
 best_valid_accs = 0
 base_epoch = lr_decay_startpoint
 base_lr = lr
-optimRate = {'learningRate' : 0.001, 'weigthDecay' : 0.001}
+optimState = {'learningRate' : 0.001, 'weigthDecay' : 0.001}
 
 net = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 print(net)
@@ -314,7 +321,7 @@ LOSS = MultiClassNLLCriterion()
 for epoch in range(1,num_epochs):
     #learing rate self - adjustment
     if(epoch > 250):
-        optimRate['learningRate'] = base_lr / (1 + 0.06 * (epoch - base_epoch))
+        optimState['learningRate'] = base_lr / (1 + 0.06 * (epoch - base_epoch))
         if(epoch % 50 == 0): base_epoch = epoch; base_lr= base_lr * 0.25
     logger = open(logger_file, 'a')
     #train
@@ -325,12 +332,15 @@ for epoch in range(1,num_epochs):
     nbatch = 0
     start = time.time()
     for i in range(1,train_size,batch_size):
-        gen_batch()
+        batch_label, batch_data = gen_batch(batch_size, num_nonz)
         net.train()
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states)
+        print(batch_data.shape)
+        print(pred_prob.shape)
+        print(batch_label.shape)
         err = LOSS(pred_prob, batch_label)
-        print("loss = ", err.item())
+        #print("loss = ", err.item())
         df_dpred = err.backward()
         optimizer.step()
         batch_accs = AccS(batch_label[:, range(1, num_nonz)], net.output[1].float())
