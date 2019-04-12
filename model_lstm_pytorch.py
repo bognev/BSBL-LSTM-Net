@@ -335,7 +335,7 @@ for epoch in range(1,num_epochs):
         batch_label, batch_data = gen_batch(batch_size, num_nonz)
         net.train()
         optimizer.zero_grad()
-        pred_prob = net(batch_data, batch_zero_states)[1]
+        pred_prob = net(batch_data, batch_zero_states)[0] #0 or 1?!
         # print(batch_data.shape)
         # print(pred_prob.shape)
         # print(batch_label.shape)
@@ -343,9 +343,9 @@ for epoch in range(1,num_epochs):
         print("loss = "+str(err.item()))
         df_dpred = err.backward()
         optimizer.step()
-        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
-        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
-        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
+        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
+        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
+        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
         train_accs = train_accs + batch_accs
         train_accl = train_accl + batch_accl
         train_accm = train_accm + batch_accm
@@ -369,9 +369,9 @@ for epoch in range(1,num_epochs):
         net.eval()
         pred_prob = net(batch_data,batch_zero_states)[1].float()
         err = LOSS(pred_prob, batch_label)
-        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
-        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
-        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
+        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
+        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
+        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
         valid_accs = valid_accs + batch_accs
         valid_accl = valid_accl + batch_accl
         valid_accm = valid_accm + batch_accm
