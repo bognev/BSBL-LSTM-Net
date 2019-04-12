@@ -143,7 +143,7 @@ class GetLstmNet(nn.Module):
 
     def forward(self, x, init_states_input):
         self.lstm_output = self.lstmnet(x, init_states_input)
-        print(self.lstm_output.size())
+        # print(self.lstm_output.size())
         self.pred = self.l_pred_l(self.lstm_output)
         #print(self.pred.size())
         return self.pred
@@ -177,46 +177,46 @@ class MultiClassNLLCriterion(torch.nn.Module):
         self.output = self.lsm(inputs)
         shape = target.shape
         outputs = 0
-        print(self.output.shape)
-        print(target.shape)
+        # print(self.output.shape)
+        # print(target.shape)
         for i in range(0,shape[1]):
-            outputs += self.nll(self.output,target[:,i].squeeze_())
+            outputs = outputs + self.nll(self.output,target[:,i].squeeze())
         return outputs/shape[1]
 
 
 #match number
 def AccS(label, pred_prob):
     num_nonz = label.shape[1]
-    _, pred = pred_prob.topk(num_nonz,1,True) #?!
+    _, pred = pred_prob.topk(num_nonz) #?!
     pred = pred.float()
     t_score = torch.zeros(label.shape)
-    for i in range(1, num_nonz):
-        for j in range(1, num_nonz):
+    for i in range(0, num_nonz):
+        for j in range(0, num_nonz):
             t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
     return t_score.mean()
 #loose match
 def AccL(label, pred_prob):
     num_nonz = label.shape[1]
-    _, pred = pred_prob.topk(20,1,True) #?!
+    _, pred = pred_prob.topk(20) #?!
     pred = pred.float()
     t_score = torch.zeros(label.shape)
-    for i in range(1, num_nonz):
-        for j in range(1, 20):
+    for i in range(0, num_nonz):
+        for j in range(0, 20):
             t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
     return t_score.mean()
 #sctrict match
 def AccM(label, pred_prob):
     num_nonz = label.shape[1]
-    _, pred = pred_prob.topk(num_nonz,1,True) #?!
+    _, pred = pred_prob.topk(num_nonz) #?!
     pred = pred.float()
     t_score = torch.zeros(label.shape)
-    for i in range(1, num_nonz):
-        for j in range(1, 20):
+    for i in range(0, num_nonz):
+        for j in range(0, 20):
             t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
     return t_score.sum(2).eq(num_nonz).sum() * 1./ pred.shape[1]
 
 gpu = 1 # gpu id
-batch_size = 25#250 # training batch size
+batch_size = 10#250 # training batch size
 lr = 0.001 # basic learning rate
 lr_decay_startpoint = 250 #learning rate from which epoch
 num_epochs = 4#00 # total training epochs
@@ -240,8 +240,8 @@ manualSeed = torch.randint(1,10000,(1,))
 print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
 
-train_size = 600#600000
-valid_size = 100#100000
+train_size = 60#600000
+valid_size = 10#100000
 valid_data = torch.zeros(valid_size, input_size)
 valid_label = torch.zeros(valid_size, num_nonz)
 batch_data = torch.zeros(batch_size, input_size)
@@ -273,10 +273,10 @@ def gen_batch(batch_size, num_nonz):
     batch_n = torch.Tensor(batch_size, num_nonz)
     bs = batch_size
     len = int(100 / num_nonz*num_nonz)
-    perm = torch.randperm(100)[range(1,len)]
+    perm = torch.randperm(100)[range(len)]
     batch_label = torch.zeros(batch_size, num_nonz)  # for MultiClassNLLCriterion LOSS
     for i in range(int(bs*num_nonz/len)):
-        perm = torch.cat((perm, torch.randperm(100)[range(1,len)]))
+        perm = torch.cat((perm, torch.randperm(100)[range(len)]))
     batch_label.copy_(perm[range(bs*num_nonz)].reshape([bs, num_nonz]))
     batch_label = batch_label.type(torch.LongTensor)
     batch_X.zero_()
@@ -290,17 +290,17 @@ def gen_batch(batch_size, num_nonz):
         for j in range(num_nonz):
             batch_X[i][batch_label[i][j]] = batch_n[i][j]
     batch_data.copy_(torch.mm(batch_X, mat_A))
-    print(batch_label.shape)
-    print(batch_data.shape)
+    # print(batch_label.shape)
+    # print(batch_data.shape)
     return batch_label, batch_data
 
 print("building validation set")
 for i in range(0, valid_size, batch_size):
     batch_label, batch_data = gen_batch(batch_size, num_nonz)
-    print(batch_label.shape)
-    print("batch_data shape = " + str(batch_data.shape))
-    print("valid_data shape = " + str(valid_data.shape))
-    print(range(i,i+batch_size-1))
+    # print(batch_label.shape)
+    # print("batch_data shape = " + str(batch_data.shape))
+    # print("valid_data shape = " + str(valid_data.shape))
+    # print(range(i,i+batch_size-1))
     valid_data[range(i,i+batch_size), :].copy_(batch_data)
     valid_label[range(i, i + batch_size)][:].copy_(batch_label)
 print('done')
@@ -335,17 +335,17 @@ for epoch in range(1,num_epochs):
         batch_label, batch_data = gen_batch(batch_size, num_nonz)
         net.train()
         optimizer.zero_grad()
-        pred_prob = net(batch_data, batch_zero_states)
-        print(batch_data.shape)
-        print(pred_prob.shape)
-        print(batch_label.shape)
+        pred_prob = net(batch_data, batch_zero_states)[1]
+        # print(batch_data.shape)
+        # print(pred_prob.shape)
+        # print(batch_label.shape)
         err = LOSS(pred_prob, batch_label)
-        #print("loss = ", err.item())
+        print("loss = "+str(err.item()))
         df_dpred = err.backward()
         optimizer.step()
-        batch_accs = AccS(batch_label[:, range(1, num_nonz)], net.output[1].float())
-        batch_accl = AccL(batch_label[:, range(1, num_nonz)], net.output[1].float())
-        batch_accm = AccM(batch_label[:, range(1, num_nonz)], net.output[1].float())
+        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
+        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
+        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
         train_accs = train_accs + batch_accs
         train_accl = train_accl + batch_accl
         train_accm = train_accm + batch_accm
@@ -367,11 +367,11 @@ for epoch in range(1,num_epochs):
     for i in range(1,valid_size,batch_size):
         batch_data.copy(valid_data[range(i,i+batch_size-1),:])
         net.eval()
-        pred_prob = net(batch_data,batch_zero_states).float()
+        pred_prob = net(batch_data,batch_zero_states)[1].float()
         err = LOSS(pred_prob, batch_label)
-        batch_accs = AccS(batch_label[:, range(1, num_nonz)], net.output[1].float())
-        batch_accl = AccL(batch_label[:, range(1, num_nonz)], net.output[1].float())
-        batch_accm = AccM(batch_label[:, range(1, num_nonz)], net.output[1].float())
+        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
+        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
+        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob[1].float())
         valid_accs = valid_accs + batch_accs
         valid_accl = valid_accl + batch_accl
         valid_accm = valid_accm + batch_accm
