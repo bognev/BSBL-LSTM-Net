@@ -126,7 +126,7 @@ class BuildLstmUnrollNet(nn.Module):
 
 
         self.output = torch.cat(self.outputs, 2)
-        print(self.output.shape)
+        #print(self.output.shape)
 
         return self.output
 
@@ -147,12 +147,12 @@ class GetLstmNet(nn.Module):
         self.lstmnet = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
 
     def forward(self, x, init_states_input):
-        print(x.shape)
-        print(init_states_input.shape)
+        # print(x.shape)
+        # print(init_states_input.shape)
         self.lstm_output = self.lstmnet(x, init_states_input)
-        print(self.lstm_output.shape)
+        # print(self.lstm_output.shape)
         self.pred = self.l_pred_l(self.lstm_output)
-        print(self.pred.shape)
+        # print(self.pred.shape)
         return self.pred
 
 
@@ -226,7 +226,7 @@ gpu = 1 # gpu id
 batch_size = 10#250 # training batch size
 lr = 0.001 # basic learning rate
 lr_decay_startpoint = 250 #learning rate from which epoch
-num_epochs = 4#00 # total training epochs
+num_epochs = 5#00 # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
 
@@ -247,8 +247,8 @@ manualSeed = torch.randint(1,10000,(1,))
 print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
 
-train_size = 60#600000
-valid_size = 10#100000
+train_size = 500#600000
+valid_size = 50#100000
 valid_data = torch.zeros(valid_size, input_size)
 valid_label = torch.zeros(valid_size, num_nonz)
 batch_data = torch.zeros(batch_size, input_size)
@@ -344,9 +344,9 @@ for epoch in range(1,num_epochs):
         net.train()
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states)[0] #0 or 1?!
-        print(batch_data.shape)
+        # print(batch_data.shape)
          #print(pred_prob.shape)
-        print(batch_label.shape)
+        # print(batch_label.shape)
         err = LOSS(pred_prob, batch_label)
         print("loss = "+str(err.item()))
         df_dpred = err.backward()
@@ -375,10 +375,11 @@ for epoch in range(1,num_epochs):
     valid_accl = 0
     valid_accm = 0
     valid_err = 0
-    for i in range(1,valid_size,batch_size):
-        batch_data.copy(valid_data[range(i,i+batch_size-1),:])
+    for i in range(0,valid_size,batch_size):
+        batch_data.copy_(valid_data[range(i,i+batch_size),:])
+        batch_label[:,range(0, num_nonz)].copy_(valid_label[range(i, i + batch_size), :])
         net.eval()
-        pred_prob = net(batch_data,batch_zero_states)[1].float()
+        pred_prob = net(batch_data,batch_zero_states)[0].float()
         err = LOSS(pred_prob, batch_label)
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
