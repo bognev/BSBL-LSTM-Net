@@ -93,8 +93,11 @@ class BuildLstmUnrollNet(nn.Module):
         self.buildlstmstack = BuildLstmStack(self.input_size, self.rnn_size, self.num_layers)
 
     def forward(self, x, init_states_input):
+        self.init_hs = []
+        self.init_cs = []
+        self.outputs = []
+        self.out_states_lst = []
         init_states = init_states_input.reshape((init_states_input.size(0),self.num_layers * 2, self.rnn_size))
-
         init_states_lst  = list(init_states.chunk(self.num_layers * 2,1))
         #print()
         for i in range(self.num_layers):
@@ -121,7 +124,9 @@ class BuildLstmUnrollNet(nn.Module):
         # for j in range (1,self.num_layers):
         # do_share_parametrs
 
+
         self.output = torch.cat(self.outputs, 2)
+        print(self.output.shape)
 
         return self.output
 
@@ -142,10 +147,12 @@ class GetLstmNet(nn.Module):
         self.lstmnet = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
 
     def forward(self, x, init_states_input):
+        print(x.shape)
+        print(init_states_input.shape)
         self.lstm_output = self.lstmnet(x, init_states_input)
-        # print(self.lstm_output.size())
+        print(self.lstm_output.shape)
         self.pred = self.l_pred_l(self.lstm_output)
-        #print(self.pred.size())
+        print(self.pred.shape)
         return self.pred
 
 
@@ -192,7 +199,7 @@ def AccS(label, pred_prob):
     t_score = torch.zeros(label.shape)
     for i in range(0, num_nonz):
         for j in range(0, num_nonz):
-            t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
+            t_score[:,i].add(label[:,i].float().eq(pred[:,j]).float())
     return t_score.mean()
 #loose match
 def AccL(label, pred_prob):
@@ -202,7 +209,7 @@ def AccL(label, pred_prob):
     t_score = torch.zeros(label.shape)
     for i in range(0, num_nonz):
         for j in range(0, 20):
-            t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
+            t_score[:,i].add(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
     return t_score.mean()
 #sctrict match
 def AccM(label, pred_prob):
@@ -211,9 +218,9 @@ def AccM(label, pred_prob):
     pred = pred.float()
     t_score = torch.zeros(label.shape)
     for i in range(0, num_nonz):
-        for j in range(0, 20):
-            t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
-    return t_score.sum(2).eq(num_nonz).sum() * 1./ pred.shape[1]
+        for j in range(0, num_nonz):
+            t_score[:,i].add(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
+    return t_score.sum(1).eq(num_nonz).sum() * 1./ pred.shape[0]
 
 gpu = 1 # gpu id
 batch_size = 10#250 # training batch size
@@ -248,7 +255,7 @@ batch_data = torch.zeros(batch_size, input_size)
 batch_label = torch.zeros(batch_size, num_nonz) # for MultiClassNLLCriterion LOSS
 batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2) #init_states for lstm
 
-AccM, AccL, Accs = 0, 0, 0
+#AccM, AccL, Accs = 0, 0, 0
 
 
 err = 0
@@ -327,25 +334,26 @@ for epoch in range(1,num_epochs):
     #train
     train_accs = 0
     train_accl = 0
-    rain_accm = 0
+    train_accm = 0
     train_err = 0
     nbatch = 0
-    start = time.time()
-    for i in range(1,train_size,batch_size):
+
+    for i in range(0,train_size,batch_size):
+        start = time.time()
         batch_label, batch_data = gen_batch(batch_size, num_nonz)
         net.train()
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states)[0] #0 or 1?!
-        # print(batch_data.shape)
-        # print(pred_prob.shape)
-        # print(batch_label.shape)
+        print(batch_data.shape)
+         #print(pred_prob.shape)
+        print(batch_label.shape)
         err = LOSS(pred_prob, batch_label)
         print("loss = "+str(err.item()))
         df_dpred = err.backward()
         optimizer.step()
-        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
-        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
-        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
+        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
+        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
+        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob.float())
         train_accs = train_accs + batch_accs
         train_accl = train_accl + batch_accl
         train_accm = train_accm + batch_accm
@@ -353,11 +361,14 @@ for epoch in range(1,num_epochs):
         nbatch = nbatch + 1
         if nbatch % 512 == 1:
             print("%.4f %.4f %.4f err %.4f", batch_accs, batch_accl, batch_accm, err)
-    print("Train [%d] Time %.3f s-acc %.4f l-acc %.4f m-acc %.4f err %.4f",epoch, time.time().real,\
-        train_accs / nbatch, train_accl / nbatch, train_accm / nbatch, train_err / nbatch)
-    logger.write("Train [%d] Time %.3f s-acc %.4f l-acc %.4f m-acc %.4f err %.4f\n", epoch, time.time().real,\
-        train_accs / nbatch, train_accl / nbatch, train_accm / nbatch, train_err / nbatch)
     end = time.time()
+    print("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
+                                                                        train_accs / nbatch, train_accl / nbatch,\
+                                                                        train_accm / nbatch, train_err / nbatch))
+    logger.write("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
+                                                                        train_accs / nbatch, train_accl / nbatch,\
+                                                                        train_accm / nbatch, train_err / nbatch))
+
     #eval
     nbatch = 0
     valid_accs = 0
@@ -369,18 +380,20 @@ for epoch in range(1,num_epochs):
         net.eval()
         pred_prob = net(batch_data,batch_zero_states)[1].float()
         err = LOSS(pred_prob, batch_label)
-        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
-        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
-        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob[0].float())
+        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
+        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
+        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob.float())
         valid_accs = valid_accs + batch_accs
         valid_accl = valid_accl + batch_accl
         valid_accm = valid_accm + batch_accm
         valid_err = valid_err + err
         nbatch = nbatch + 1
-    print("Valid [%d] Time %.3f s-acc %.4f l-acc %.4f m-acc %.4f err %.4f", epoch, time.time().real, \
-          valid_accs / nbatch, valid_accl / nbatch, valid_accm / nbatch, valid_err / nbatch)
-    logger.write("Valid [%d] Time %.3f s-acc %.4f l-acc %.4f m-acc %.4f err %.4f\n", epoch, time.time().real, \
-                 valid_accs / nbatch, valid_accl / nbatch, valid_accm / nbatch, valid_err / nbatch)
+    print("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
+                                                                        valid_accs / nbatch, valid_accl / nbatch,\
+                                                                        valid_accm / nbatch, valid_err / nbatch))
+    logger.write("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
+                                                                        valid_accs / nbatch, valid_accl / nbatch,\
+                                                                        train_accm / nbatch, valid_err / nbatch))
     if(valid_accs > best_valid_accs):
         best_valid_accs = valid_accs
         print("saving model")
