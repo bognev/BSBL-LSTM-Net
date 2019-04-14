@@ -3,6 +3,8 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from mat4py import loadmat
+from torchsummary import summary
+
 import time
 
 def passthrough(x, **kwargs):
@@ -242,13 +244,13 @@ rnn_size = 425 # number of units in RNN cell
 num_layers = 2 # number of stacked RNN layers
 num_unroll = 11 # number of RNN unrolled time steps
 
-torch.set_num_threads(4)
+torch.set_num_threads(2)
 manualSeed = torch.randint(1,10000,(1,))
 print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
 
-train_size = 500#600000
-valid_size = 50#100000
+train_size = 100#600000
+valid_size = 10#100000
 valid_data = torch.zeros(valid_size, input_size)
 valid_label = torch.zeros(valid_size, num_nonz)
 batch_data = torch.zeros(batch_size, input_size)
@@ -319,6 +321,9 @@ optimState = {'learningRate' : 0.001, 'weigthDecay' : 0.001}
 
 net = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 print(net)
+#summary(net,[(num_layers,input_size),(num_layers,rnn_size * num_layers * 2)])
+#summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
+
 # create a stochastic gradient descent optimizer
 optimizer = optim.RMSprop(net.parameters(), lr=lr)
 # create a loss function
@@ -360,7 +365,7 @@ for epoch in range(1,num_epochs):
         train_err = train_err + err
         nbatch = nbatch + 1
         if nbatch % 512 == 1:
-            print("%.4f %.4f %.4f err %.4f", batch_accs, batch_accl, batch_accm, err)
+            print("{} {} {} err {}", batch_accs, batch_accl, batch_accm, err)
     end = time.time()
     print("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
                                                                         train_accs / nbatch, train_accl / nbatch,\
