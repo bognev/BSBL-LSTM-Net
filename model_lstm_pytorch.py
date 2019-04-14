@@ -25,32 +25,28 @@ class BuildLstmStack(nn.Module):
         self.prev_h = []
         self.sigmoid = torch.nn.Sigmoid()
         self.tanh = torch.nn.Tanh()
-        #self.prev_cs = prev_cs
-        #elf.prev_hs = prev_hs
-        l_i2h_lst = []
-        for L in range(self.num_layers):
-            if L == 0:
-                self.x_size = self.input_size
-            else:
-                self.x_size = self.rnn_size
-            l_i2h_lst.append(nn.Linear(self.x_size, 4 * self.rnn_size))
+
+        l_i2h_lst = [nn.Linear(self.input_size, 4 * self.rnn_size)]
+        for L in range(0, self.num_layers):
+            l_i2h_lst.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
+        # set attributes
 
         self.l_i2h = nn.ModuleList(l_i2h_lst)
         self.l_h2h = nn.Linear(self.rnn_size, 4 * self.rnn_size)
         self.l_bn = nn.BatchNorm1d(4 * self.rnn_size)
+        for L in range(num_layers):
+            setattr(self, 'layer_i2h_%d' % L, self.l_i2h[L])
+        setattr(self, 'layer_batch_norm', self.l_bn)
+
 
     def forward(self, x, prev_hs, prev_cs):
         next_hs = []
         next_cs = []
+        self.x = x
         for L in range(self.num_layers):
-            if L == 0:
-                self.x = x
-            else:
+            if L != 0:
                 self.x = next_hs[L-1]
 
-            #self.l_i2h.append(nn.Linear(self.x_size[L], 4 * self.rnn_size))
-            #self.l_h2h.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
-            #self.l_bn.append(nn.BatchNorm1d(4 * self.rnn_size))
             self.prev_c = prev_cs[L]
             self.prev_h = prev_hs[L]
 
@@ -68,7 +64,7 @@ class BuildLstmStack(nn.Module):
             next_h = out_gate * self.tanh(next_c)
             next_hs.append(next_h)
             next_cs.append(next_c)
-        return next_hs, next_cs
+        return next_hs, next_cs, i2h, h2h
 
 
 class BuildLstmUnrollNet(nn.Module):
@@ -112,9 +108,10 @@ class BuildLstmUnrollNet(nn.Module):
 
         for i in range(self.num_unroll):
             self.now_hs, self.now_cs = self.buildlstmstack(x, self.now_hs, self.now_cs)
-            a=self.now_hs[len(self.now_hs) - 1]
-            #print(a.size())
             self.outputs.append(self.now_hs[len(self.now_hs)-1])
+
+        print(self.buildlstmstack.l_h2h.weight.shape)
+        print(self.buildlstmstack.l_i2h[0].weight.shape)
 
         for i in range(self.num_layers):
             self.out_states_lst.append(self.now_hs[i])
@@ -228,7 +225,7 @@ gpu = 1 # gpu id
 batch_size = 10#250 # training batch size
 lr = 0.001 # basic learning rate
 lr_decay_startpoint = 250 #learning rate from which epoch
-num_epochs = 5#00 # total training epochs
+num_epochs = 2#00 # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
 
