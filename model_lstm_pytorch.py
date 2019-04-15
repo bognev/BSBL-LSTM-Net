@@ -3,7 +3,7 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from mat4py import loadmat
-#from torchsummary import summary
+from torchsummary import summary
 
 import time
 
@@ -111,6 +111,9 @@ class BuildLstmUnrollNet(nn.Module):
         for i in range(self.num_unroll):
             self.now_hs, self.now_cs, i2h, h2h = self.buildlstmstack(x, self.now_hs, self.now_cs)
             self.outputs.append(self.now_hs[len(self.now_hs)-1])
+            # for j in range(self.num_layers):
+            #     self.buildlstmstack.l_i2h[j] = self.buildlstmstack.l_i2h[0][j]
+                # self.buildlstmstack.l_h2h[j] = self.buildlstmstack.l_h2h[0][j]
             self.i2h.append(i2h)
             self.h2h.append(h2h)
 
@@ -123,10 +126,11 @@ class BuildLstmUnrollNet(nn.Module):
 
         for i in range(1,self.num_unroll):
             for j in range(self.num_layers):
-                self.buildlstmstack.l_i2h[i][j] = self.buildlstmstack.l_i2h[1][j]
-                self.buildlstmstack.l_h2h[i][j] = self.buildlstmstack.l_h2h[1][j]
-                # self.i2h[i][j] = self.i2h[1][j]
-                # self.h2h[i][j] = self.h2h[1][j]
+                self.i2h[i][j] = self.i2h[0][j]
+                self.h2h[i][j] = self.h2h[0][j]
+            #     self.buildlstmstack.l_i2h[i][j] = self.buildlstmstack.l_i2h[0][j]
+            #     self.buildlstmstack.l_h2h[i][j] = self.buildlstmstack.l_h2h[0][j]
+
 
 
 
@@ -330,8 +334,10 @@ optimState = {'learningRate' : 0.001, 'weigthDecay' : 0.001}
 
 net = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 print(net)
+device = torch.device('cpu')
+net.to(device)
 #summary(net,[(num_layers,input_size),(num_layers,rnn_size * num_layers * 2)])
-#summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
+# summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
 
 # create a stochastic gradient descent optimizer
 optimizer = optim.RMSprop(net.parameters(), lr=lr)
@@ -358,6 +364,16 @@ for epoch in range(1,num_epochs):
         net.train()
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states)[0] #0 or 1?!
+
+        pytorch_total_params = sum(p.numel() for p in net.parameters())
+        print(pytorch_total_params)
+        for param in net.parameters(True):
+            print(param.size())
+            param.clamp(-0.01,0.01)
+            print(param.max())
+
+            #if param.requires_grad:
+             #   print(name)#, param.data
         # print(batch_data.shape)
          #print(pred_prob.shape)
         # print(batch_label.shape)
