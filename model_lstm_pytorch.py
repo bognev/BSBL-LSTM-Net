@@ -3,7 +3,7 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from mat4py import loadmat
-from torchsummary import summary
+#from torchsummary import summary
 
 import time
 
@@ -95,6 +95,8 @@ class BuildLstmUnrollNet(nn.Module):
         self.init_cs = []
         self.outputs = []
         self.out_states_lst = []
+        self.i2h = []
+        self.h2h = []
         init_states = init_states_input.reshape((init_states_input.size(0),self.num_layers * 2, self.rnn_size))
         init_states_lst  = list(init_states.chunk(self.num_layers * 2,1))
         #print()
@@ -107,15 +109,25 @@ class BuildLstmUnrollNet(nn.Module):
         self.now_hs, self.now_cs = self.init_hs, self.init_cs
 
         for i in range(self.num_unroll):
-            self.now_hs, self.now_cs = self.buildlstmstack(x, self.now_hs, self.now_cs)
+            self.now_hs, self.now_cs, i2h, h2h = self.buildlstmstack(x, self.now_hs, self.now_cs)
             self.outputs.append(self.now_hs[len(self.now_hs)-1])
+            self.i2h.append(i2h)
+            self.h2h.append(h2h)
 
-        print(self.buildlstmstack.l_h2h.weight.shape)
-        print(self.buildlstmstack.l_i2h[0].weight.shape)
+        #print(self.buildlstmstack.l_h2h.weight.shape)
+        #print(self.buildlstmstack.l_i2h[0].weight.shape)
 
         for i in range(self.num_layers):
             self.out_states_lst.append(self.now_hs[i])
             self.out_states_lst.append(self.now_cs[i])
+
+        for i in range(1,self.num_unroll):
+            for j in range(self.num_layers):
+                self.buildlstmstack.l_i2h[i][j] = self.buildlstmstack.l_i2h[1][j]
+                self.buildlstmstack.l_h2h[i][j] = self.buildlstmstack.l_h2h[1][j]
+                # self.i2h[i][j] = self.i2h[1][j]
+                # self.h2h[i][j] = self.h2h[1][j]
+
 
 
         #self.out_states = torch.cat(self.out_states_lst,1)
@@ -362,7 +374,7 @@ for epoch in range(1,num_epochs):
         train_err = train_err + err
         nbatch = nbatch + 1
         if nbatch % 512 == 1:
-            print("{} {} {} err {}", batch_accs, batch_accl, batch_accm, err)
+            print("{} {} {} err {}\n".format(batch_accs, batch_accl, batch_accm, err))
     end = time.time()
     print("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
                                                                         train_accs / nbatch, train_accl / nbatch,\
