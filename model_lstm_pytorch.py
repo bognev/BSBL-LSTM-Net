@@ -3,7 +3,10 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from mat4py import loadmat
-from torchsummary import summary
+#from torchsummary import summary
+from graphviz import Digraph
+from torchviz import make_dot
+from graphviz import Source
 
 import time
 
@@ -36,6 +39,7 @@ class BuildLstmStack(nn.Module):
         self.l_bn = nn.BatchNorm1d(4 * self.rnn_size)
         for L in range(num_layers):
             setattr(self, 'layer_i2h_%d' % L, self.l_i2h[L])
+        setattr(self, 'layer_h2h', self.l_h2h)
         setattr(self, 'layer_batch_norm', self.l_bn)
 
 
@@ -160,6 +164,8 @@ class GetLstmNet(nn.Module):
         self.l_pred_bn = nn.BatchNorm1d(self.output_size)
         self.pred = {}
         self.lstmnet = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
+        setattr(self, 'LstmUnrollNet', self.lstmnet)
+        setattr(self, 'LstmNetLinear', self.l_pred_l)
 
     def forward(self, x, init_states_input):
         # print(x.shape)
@@ -170,22 +176,36 @@ class GetLstmNet(nn.Module):
         # print(self.pred.shape)
         return self.pred
 
-
-
 ###########Usage#######################################
 
-# input_size = 20
-# output_size = 100
-# rnn_size = 100
-# num_layers = 3
-# num_unroll = 5
-# model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-# x = torch.rand(3,20)
-# z = torch.zeros(3,rnn_size * num_layers * 2)
-# #y = net.train()
-# output = model(x,z)
-# print(model)
+input_size = 20
+output_size = 100
+rnn_size = 100
+num_layers = 3
+num_unroll = 5
+model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+x = torch.rand(3,20)
+z = torch.zeros(3,rnn_size * num_layers * 2)
+#y = net.train()
+output = model(x,z)
+# for name, parameters in model.named_parameters():
+#     print(str(name)+':'+str(parameters.size()))
+temp = make_dot(output, params=dict(list(model.named_parameters()) + [('x', x)] + [('z', z)]))
 
+s = Source(temp, filename="test.gv", format="png")
+s.view()
+
+# modell = nn.Sequential()
+# modell.add_module('W0', nn.Linear(8, 16))
+# modell.add_module('tanh', nn.Tanh())
+# modell.add_module('W1', nn.Linear(16, 1))
+#
+# x = torch.randn(1,8)
+#
+# temp = make_dot(modell(x), params=dict(modell.named_parameters()))
+#
+# s = Source(temp, filename="test.gv", format="png")
+# s.view()
 
 class MultiClassNLLCriterion(torch.nn.Module):
 
@@ -338,7 +358,7 @@ device = torch.device('cpu')
 net.to(device)
 #summary(net,[(num_layers,input_size),(num_layers,rnn_size * num_layers * 2)])
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
-
+make_dot
 # create a stochastic gradient descent optimizer
 optimizer = optim.RMSprop(net.parameters(), lr=lr)
 # create a loss function
@@ -367,11 +387,11 @@ for epoch in range(1,num_epochs):
 
         pytorch_total_params = sum(p.numel() for p in net.parameters())
         print(pytorch_total_params)
-        for param in net.parameters(True):
-            print(param.size())
-            param.clamp(-0.01,0.01)
-            print(param.max())
-
+        # for param in net.parameters(True):
+        #     print(param.size())
+        #     param.clamp_(-0.01,0.01)
+        #     print(param.max())
+        net.l_pred_l.weight.data.clamp_(-0.01,0.01)
             #if param.requires_grad:
              #   print(name)#, param.data
         # print(batch_data.shape)

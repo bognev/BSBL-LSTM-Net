@@ -1,5 +1,7 @@
 .idea/*
 *.log
 *.mat
+*.gv
+*.png
 
 .gitignore
