@@ -86,7 +86,6 @@ class BuildLstmUnrollNet(nn.Module):
         self.num_layers = num_layers
         self.rnn_size = rnn_size
         self.input_size = input_size
-        #self.init_states_input = passthrough
 
         self.init_hs = []
         self.init_cs = []
@@ -98,11 +97,11 @@ class BuildLstmUnrollNet(nn.Module):
         self.output = []
         self.now_hs = []
         self.now_cs = []
-        #self.buildlstmstack = BuildLstmStack(self.input_size, self.rnn_size, self.num_layers)
-        self.buildlstmstack_lst = [BuildLstmStack(self.input_size, self.rnn_size, self.num_layers)]
-        for i in range(1, self.num_unroll):
+        self.buildlstmstack_lst = []
+        for i in range(0, self.num_unroll):
             self.buildlstmstack_lst.append(BuildLstmStack(self.input_size, self.rnn_size, self.num_layers))
-
+        self.buildlstmstack = nn.ModuleList(self.buildlstmstack_lst)
+        self.now_h, self.now_c = [], []
 
 
     def forward(self, x, init_states_input):
@@ -122,11 +121,13 @@ class BuildLstmUnrollNet(nn.Module):
         self.now_hs.append(self.init_hs)
         self.now_cs.append(self.init_cs)
 
+
         for i in range(self.num_unroll):
-            now_h, now_c = self.buildlstmstack_lst[i](x, self.now_hs[i], self.now_cs[i])
-            self.now_hs.append(now_h)
-            self.now_cs.append(now_c)
-            self.outputs.append(torch.cat(self.now_hs[-1],0))
+            self.now_h, self.now_c = self.buildlstmstack[i](x, self.now_hs[i], self.now_cs[i])
+            self.now_hs.append(self.now_h)
+            self.now_cs.append(self.now_c)
+            #self.outputs.append(torch.cat(self.now_hs[-1],1))
+            self.outputs.append(torch.cat(self.now_hs[-1], 1).reshape((self.num_layers, init_states_input.size(0), self.rnn_size)))
             for L in range(self.num_layers):
                 setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
                 setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
@@ -135,15 +136,15 @@ class BuildLstmUnrollNet(nn.Module):
             self.out_states_lst.append(self.now_hs[i])
             self.out_states_lst.append(self.now_cs[i])
 
-        for i in range(1,self.num_unroll):
-            for j in range(self.num_layers):
-                self.buildlstmstack_lst[i].l_i2h[j] = self.buildlstmstack_lst[0].l_i2h[j]
-                self.buildlstmstack_lst[i].l_h2h[j] = self.buildlstmstack_lst[0].l_h2h[j]
+        # for i in range(1,self.num_unroll):
+        #     for j in range(self.num_layers):
+        #         self.buildlstmstack_lst[i].l_i2h[j] = self.buildlstmstack_lst[0].l_i2h[j]
+        #         self.buildlstmstack_lst[i].l_h2h[j] = self.buildlstmstack_lst[0].l_h2h[j]
 
         #self.output = torch.cat(self.outputs, 2)
         self.output = self.outputs[0]
         for i in range(1, self.num_unroll):
-            self.output = torch.cat((self.output, self.outputs[i]),1)
+            self.output = torch.cat((self.output, self.outputs[i]),2)
         #print(self.output.shape)
 
         return self.output
@@ -163,8 +164,8 @@ class GetLstmNet(nn.Module):
         self.l_pred_bn = nn.BatchNorm1d(self.output_size)
         self.pred = {}
         self.lstmnet = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
-        setattr(self, 'LstmUnrollNet', self.lstmnet)
-        setattr(self, 'LstmNetLinear', self.l_pred_l)
+        # setattr(self, 'LstmUnrollNet', self.lstmnet)
+        # setattr(self, 'LstmNetLinear', self.l_pred_l)
 
     def forward(self, x, init_states_input):
         # print(x.shape)
@@ -186,31 +187,31 @@ num_unroll = 5
 x = torch.rand(3,20)
 z = torch.zeros(3,rnn_size * num_layers * 2)
 model = BuildLstmStack(input_size, rnn_size, num_layers)
-# init_hs = []
-# init_cs = []
-# init_states = z.reshape((z.size(0),num_layers * 2, rnn_size))
-# init_states_lst = list(init_states.chunk(num_layers * 2,1))
-# for i in range(num_layers):
-#     init_hs.append(init_states_lst[2*i].reshape(num_layers,rnn_size))
-#     init_cs.append(init_states_lst[2*i+1].reshape(num_layers,rnn_size))
-# now_hs, now_cs = model(x, init_hs, init_cs)
-# temp = make_dot((now_hs[2], now_cs[2]), params=dict(list(model.named_parameters())))
-# s = Source(temp, filename="BuildLstmStack.gv", format="png")
-# # s.view()
+init_hs = []
+init_cs = []
+init_states = z.reshape((z.size(0),num_layers * 2, rnn_size))
+init_states_lst = list(init_states.chunk(num_layers * 2,1))
+for i in range(num_layers):
+    init_hs.append(init_states_lst[2*i].reshape(num_layers,rnn_size))
+    init_cs.append(init_states_lst[2*i+1].reshape(num_layers,rnn_size))
+now_hs, now_cs = model(x, init_hs, init_cs)
+temp = make_dot((now_hs[2], now_cs[2]), params=dict(list(model.named_parameters())))
+s = Source(temp, filename="BuildLstmStack.gv", format="png")
+s.view()
 #
-# model = BuildLstmUnrollNet(num_unroll, num_layers, rnn_size, input_size)
-# out = model(x, z)
-# temp = make_dot(out, params=dict(list(model.named_parameters())))
-# s = Source(temp, filename="BuildLstmUnrollNet.gv", format="png")
-# s.view()
+model = BuildLstmUnrollNet(num_unroll, num_layers, rnn_size, input_size)
+out = model(x, z)
+temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
+s = Source(temp, filename="BuildLstmUnrollNet.gv", format="png")
+s.view()
 
 
-# model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-# output = model(x,z)
+model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+output = model(x,z)
 #
-# temp = make_dot(output[0], params=dict(list(model.named_parameters())))
-# s = Source(temp, filename="test.gv", format="png")
-# s.view()
+temp = make_dot(output[0], params=dict(list(model.named_parameters())))
+s = Source(temp, filename="test.gv", format="png")
+s.view()
 
 # modell = nn.Sequential()
 # modell.add_module('W0', nn.Linear(8, 16))
@@ -400,17 +401,17 @@ for epoch in range(1,num_epochs):
         batch_label, batch_data = gen_batch(batch_size, num_nonz)
         net.train()
         optimizer.zero_grad()
-        pred_prob = net(batch_data, batch_zero_states) #0 or 1?!
+        pred_prob = net(batch_data, batch_zero_states)[0] #0 or 1?!
 
         err = LOSS(pred_prob, batch_label)
         print("loss = "+str(err.item()))
-        df_dpred = err.backward()
-        with torch.no_grad():
-            for param in net.parameters(True):
-                param.clamp_(-4,4)
-                gnorm = param.norm()
-                if(gnorm > max_grad_norm):
-                    param.mul_(max_grad_norm/gnorm)
+        df_dpred = err.backward()#(retain_graph=True)
+        # with torch.no_grad():
+        #     for param in net.parameters(True):
+        #         param.clamp_(-4,4)
+        #         gnorm = param.norm()
+        #         if(gnorm > max_grad_norm):
+        #             param.mul_(max_grad_norm/gnorm)
         #net.l_pred_l.weight.data.clamp_(-0.01,0.01)
         optimizer.step()
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
