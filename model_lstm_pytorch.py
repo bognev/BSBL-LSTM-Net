@@ -400,23 +400,18 @@ for epoch in range(1,num_epochs):
         batch_label, batch_data = gen_batch(batch_size, num_nonz)
         net.train()
         optimizer.zero_grad()
-        pred_prob = net(batch_data, batch_zero_states)[0] #0 or 1?!
+        pred_prob = net(batch_data, batch_zero_states) #0 or 1?!
 
-        pytorch_total_params = sum(p.numel() for p in net.parameters())
-        print(pytorch_total_params)
-        # for param in net.parameters(True):
-        #     print(param.size())
-        #     param.clamp_(-0.01,0.01)
-        #     print(param.max())
-        net.l_pred_l.weight.data.clamp_(-0.01,0.01)
-            #if param.requires_grad:
-             #   print(name)#, param.data
-        # print(batch_data.shape)
-         #print(pred_prob.shape)
-        # print(batch_label.shape)
         err = LOSS(pred_prob, batch_label)
         print("loss = "+str(err.item()))
         df_dpred = err.backward()
+        with torch.no_grad():
+            for param in net.parameters(True):
+                param.clamp_(-4,4)
+                gnorm = param.norm()
+                if(gnorm > max_grad_norm):
+                    param.mul_(max_grad_norm/gnorm)
+        #net.l_pred_l.weight.data.clamp_(-0.01,0.01)
         optimizer.step()
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
