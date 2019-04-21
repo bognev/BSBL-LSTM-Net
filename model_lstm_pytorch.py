@@ -26,30 +26,35 @@ class BuildLstmStack(nn.Module):
         self.x_size = []
         self.prev_c = []
         self.prev_h = []
+
+        # self.l_nb = nn.ModuleList(l_bn_lst)
+        # for L in range(num_layers):
+        #     setattr(self, 'layer_i2h_%d' % L, self.l_i2h)
+        #     setattr(self, 'layer_h2h_%d' % L, self.l_h2h)
+        #     # setattr(self, 'layer_bnorm_%d' % L, self.l_bn)
+        self.next_hs = []
+        self.next_cs = []
         sigmoid_lst = [torch.nn.Sigmoid()]
         tanh_lst = [torch.nn.Tanh()]
+        for L in range(1,self.num_layers):
+            sigmoid_lst.append(torch.nn.Sigmoid())
+            tanh_lst.append(torch.nn.Tanh())
+
+        self.sigmoid = nn.ModuleList(sigmoid_lst)
+        self.tanh = nn.ModuleList(tanh_lst)
         self.i2h = []
         self.h2h = []
 
         l_i2h_lst = [nn.Linear(self.input_size, 4 * self.rnn_size)]
         l_h2h_lst = [nn.Linear(self.rnn_size, 4 * self.rnn_size)]
         # l_bn_lst = [nn.BatchNorm1d(4 * self.rnn_size)]
-        for L in range(1,self.num_layers):
+        for L in range(1, self.num_layers):
             l_i2h_lst.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
             l_h2h_lst.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
-            sigmoid_lst.append(torch.nn.Sigmoid())
-            tanh_lst.append(torch.nn.Tanh())
+
             # l_bn_lst.append(nn.BatchNorm1d(4 * self.rnn_size))
         self.l_i2h = nn.ModuleList(l_i2h_lst)
         self.l_h2h = nn.ModuleList(l_h2h_lst)
-        self.sigmoid = nn.ModuleList(sigmoid_lst)
-        self.tanh = nn.ModuleList(tanh_lst)
-        # self.l_nb = nn.ModuleList(l_bn_lst)
-        for L in range(num_layers):
-            setattr(self, 'layer_i2h_%d' % L, self.l_i2h)
-            setattr(self, 'layer_h2h_%d' % L, self.l_h2h)
-            # setattr(self, 'layer_bnorm_%d' % L, self.l_bn)
-
 
     def forward(self, x, prev_hs, prev_cs):
         self.next_hs = []
@@ -74,7 +79,7 @@ class BuildLstmStack(nn.Module):
 
             self.next_hs.append(next_h)
             self.next_cs.append(next_c)
-        return self.next_hs, self.next_cs#, i2h, h2h
+        return torch.stack(self.next_hs), torch.stack(self.next_cs)#, i2h, h2h
 
 
 class BuildLstmUnrollNet(nn.Module):
@@ -95,22 +100,30 @@ class BuildLstmUnrollNet(nn.Module):
         self.outputs = []
         self.out_states = []
         self.output = []
-        self.now_hs = []
-        self.now_cs = []
-        self.buildlstmstack_lst = []
-        for i in range(0, self.num_unroll):
-            self.buildlstmstack_lst.append(BuildLstmStack(self.input_size, self.rnn_size, self.num_layers))
-        self.buildlstmstack = nn.ModuleList(self.buildlstmstack_lst)
+
+
         self.now_h, self.now_c = [], []
-
-
-    def forward(self, x, init_states_input):
         self.init_hs = []
         self.init_cs = []
         self.outputs = []
         self.out_states_lst = []
         self.i2h_lst = []
         self.h2h_lst = []
+        self.now_hs = []
+        self.now_cs = []
+        self.buildlstmstack_lst = []
+        for i in range(0, self.num_unroll):
+            self.buildlstmstack_lst.append(BuildLstmStack(self.input_size, self.rnn_size, self.num_layers))
+        self.buildlstmstack = nn.ModuleList(self.buildlstmstack_lst)
+
+    def forward(self, x, init_states_input):
+
+        self.init_hs = []
+        self.init_cs = []
+        self.now_hs = []
+        self.now_cs = []
+        self.outputs = []
+
         init_states = init_states_input.reshape((init_states_input.size(0),self.num_layers * 2, self.rnn_size))
         init_states_lst = list(init_states.chunk(self.num_layers * 2,1))
 
@@ -118,8 +131,8 @@ class BuildLstmUnrollNet(nn.Module):
             self.init_hs.append(init_states_lst[2*i].reshape(init_states_input.size(0),self.rnn_size))
             self.init_cs.append(init_states_lst[2*i+1].reshape(init_states_input.size(0),self.rnn_size))
 
-        self.now_hs.append(self.init_hs)
-        self.now_cs.append(self.init_cs)
+        self.now_hs.append(torch.stack(self.init_hs))
+        self.now_cs.append(torch.stack(self.init_cs))
 
 
         for i in range(self.num_unroll):
@@ -127,14 +140,14 @@ class BuildLstmUnrollNet(nn.Module):
             self.now_hs.append(self.now_h)
             self.now_cs.append(self.now_c)
             #self.outputs.append(torch.cat(self.now_hs[-1],1))
-            self.outputs.append(torch.cat(self.now_hs[-1], 1).reshape((self.num_layers, init_states_input.size(0), self.rnn_size)))
-            for L in range(self.num_layers):
-                setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
-                setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
+            self.outputs.append(self.now_hs[i][-1])#.reshape((self.num_layers, init_states_input.size(0), self.rnn_size)))
+            # for L in range(self.num_layers):
+            #     setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
+            #     setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
 
-        for i in range(self.num_layers):
-            self.out_states_lst.append(self.now_hs[i])
-            self.out_states_lst.append(self.now_cs[i])
+        # for i in range(self.num_layers):
+        #     self.out_states_lst.append(self.now_hs[i])
+        #     self.out_states_lst.append(self.now_cs[i])
 
         # for i in range(1,self.num_unroll):
         #     for j in range(self.num_layers):
@@ -144,8 +157,8 @@ class BuildLstmUnrollNet(nn.Module):
         #self.output = torch.cat(self.outputs, 2)
         self.output = self.outputs[0]
         for i in range(1, self.num_unroll):
-            self.output = torch.cat((self.output, self.outputs[i]),2)
-        #print(self.output.shape)
+            self.output = torch.cat((self.output, self.outputs[i]),1)
+        print(self.output.shape)
 
         return self.output
 
@@ -155,14 +168,14 @@ class GetLstmNet(nn.Module):
     def __init__(self, num_unroll, num_layers, rnn_size, output_size, input_size):
         super(GetLstmNet,self).__init__()
 
-        self.lstm_input = {}
-        self.lstm_output = {}
-        self.init_states = {}
-        self.out_states = {}
+        self.lstm_input = []
+        self.lstm_output = []
+        self.init_states = []
+        self.out_states = []
         self.num_unroll, self.num_layers, self.rnn_size, self.output_size, self.input_size  = num_unroll, num_layers, rnn_size, output_size, input_size
         self.l_pred_l = nn.Linear(self.num_unroll * self.rnn_size, self.output_size)
-        self.l_pred_bn = nn.BatchNorm1d(self.output_size)
-        self.pred = {}
+        #self.l_pred_bn = nn.BatchNorm1d(self.output_size)
+        self.pred = []
         self.lstmnet = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
         # setattr(self, 'LstmUnrollNet', self.lstmnet)
         # setattr(self, 'LstmNetLinear', self.l_pred_l)
@@ -183,35 +196,33 @@ output_size = 100
 rnn_size = 100
 num_layers = 3
 num_unroll = 5
-
-x = torch.rand(3,20)
-z = torch.zeros(3,rnn_size * num_layers * 2)
-model = BuildLstmStack(input_size, rnn_size, num_layers)
-init_hs = []
-init_cs = []
-init_states = z.reshape((z.size(0),num_layers * 2, rnn_size))
-init_states_lst = list(init_states.chunk(num_layers * 2,1))
-for i in range(num_layers):
-    init_hs.append(init_states_lst[2*i].reshape(num_layers,rnn_size))
-    init_cs.append(init_states_lst[2*i+1].reshape(num_layers,rnn_size))
-now_hs, now_cs = model(x, init_hs, init_cs)
-temp = make_dot((now_hs[2], now_cs[2]), params=dict(list(model.named_parameters())))
-s = Source(temp, filename="BuildLstmStack.gv", format="png")
-s.view()
+#graph of net
+# x = torch.rand(3,20)
+# z = torch.zeros(3,rnn_size * num_layers * 2)
+# model = BuildLstmStack(input_size, rnn_size, num_layers)
+# init_hs = []
+# init_cs = []
+# init_states = z.reshape((z.size(0),num_layers * 2, rnn_size))
+# init_states_lst = list(init_states.chunk(num_layers * 2,1))
+# for i in range(num_layers):
+#     init_hs.append(init_states_lst[2*i].reshape(num_layers,rnn_size))
+#     init_cs.append(init_states_lst[2*i+1].reshape(num_layers,rnn_size))
+# now_hs, now_cs = model(x, init_hs, init_cs)
+# temp = make_dot((now_hs[2], now_cs[2]), params=dict(list(model.named_parameters())))
+# s = Source(temp, filename="BuildLstmStack.gv", format="png")
+# s.view()
 #
-model = BuildLstmUnrollNet(num_unroll, num_layers, rnn_size, input_size)
-out = model(x, z)
-temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
-s = Source(temp, filename="BuildLstmUnrollNet.gv", format="png")
-s.view()
-
-
-model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-output = model(x,z)
+# model = BuildLstmUnrollNet(num_unroll, num_layers, rnn_size, input_size)
+# out = model(x, z)
+# temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
+# s = Source(temp, filename="BuildLstmUnrollNet.gv", format="png")
+# s.view()
 #
-temp = make_dot(output[0], params=dict(list(model.named_parameters())))
-s = Source(temp, filename="test.gv", format="png")
-s.view()
+# model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+# output = model(x,z)
+# temp = make_dot(output, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
+# s = Source(temp, filename="test.gv", format="png")
+# s.view()
 
 # modell = nn.Sequential()
 # modell.add_module('W0', nn.Linear(8, 16))
@@ -395,17 +406,17 @@ for epoch in range(1,num_epochs):
     train_accm = 0
     train_err = 0
     nbatch = 0
-
+    net.train()
     for i in range(0,train_size,batch_size):
         start = time.time()
         batch_label, batch_data = gen_batch(batch_size, num_nonz)
-        net.train()
+
         optimizer.zero_grad()
-        pred_prob = net(batch_data, batch_zero_states)[0] #0 or 1?!
+        pred_prob = net(batch_data, batch_zero_states) #0 or 1?!
 
         err = LOSS(pred_prob, batch_label)
         print("loss = "+str(err.item()))
-        df_dpred = err.backward()#(retain_graph=True)
+        df_dpred = err.backward()#retain_graph=True)
         # with torch.no_grad():
         #     for param in net.parameters(True):
         #         param.clamp_(-4,4)
@@ -413,6 +424,8 @@ for epoch in range(1,num_epochs):
         #         if(gnorm > max_grad_norm):
         #             param.mul_(max_grad_norm/gnorm)
         #net.l_pred_l.weight.data.clamp_(-0.01,0.01)
+        # for param in self.net.parameters():
+        #     param.grad.data.clamp(-1, 1)
         optimizer.step()
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
@@ -442,7 +455,7 @@ for epoch in range(1,num_epochs):
         batch_data.copy_(valid_data[range(i,i+batch_size),:])
         batch_label[:,range(0, num_nonz)].copy_(valid_label[range(i, i + batch_size), :])
         net.eval()
-        pred_prob = net(batch_data,batch_zero_states)[0].float()
+        pred_prob = net(batch_data,batch_zero_states).float()
         err = LOSS(pred_prob, batch_label)
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
