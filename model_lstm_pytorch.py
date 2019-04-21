@@ -59,6 +59,8 @@ class BuildLstmStack(nn.Module):
     def forward(self, x, prev_hs, prev_cs):
         self.next_hs = []
         self.next_cs = []
+        self.i2h = []
+        self.h2h = []
         for L in range(self.num_layers):
             self.prev_c = prev_cs[L]
             self.prev_h = prev_hs[L]
@@ -134,7 +136,6 @@ class BuildLstmUnrollNet(nn.Module):
         self.now_hs.append(torch.stack(self.init_hs))
         self.now_cs.append(torch.stack(self.init_cs))
 
-
         for i in range(self.num_unroll):
             self.now_h, self.now_c = self.buildlstmstack[i](x, self.now_hs[i], self.now_cs[i])
             self.now_hs.append(self.now_h)
@@ -158,7 +159,7 @@ class BuildLstmUnrollNet(nn.Module):
         self.output = self.outputs[0]
         for i in range(1, self.num_unroll):
             self.output = torch.cat((self.output, self.outputs[i]),1)
-        print(self.output.shape)
+        #print(self.output.shape)
 
         return self.output
 
@@ -243,16 +244,17 @@ class MultiClassNLLCriterion(torch.nn.Module):
         self.lsm = nn.LogSoftmax()
         self.nll = nn.NLLLoss()
         self.output = 0
+        self.outputs = 0
 
     def forward(self, inputs, target):
         self.output = self.lsm(inputs)
         shape = target.shape
-        outputs = 0
+        self.outputs = 0
         # print(self.output.shape)
         # print(target.shape)
         for i in range(0,shape[1]):
-            outputs = outputs + self.nll(self.output,target[:,i].squeeze())
-        return outputs/shape[1]
+            self.outputs = self.outputs + self.nll(self.output,target[:,i].squeeze())
+        return self.outputs/shape[1]
 
 
 #match number
