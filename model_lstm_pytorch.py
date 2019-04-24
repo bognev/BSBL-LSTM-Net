@@ -150,10 +150,18 @@ class BuildLstmUnrollNet(nn.Module):
         #     self.out_states_lst.append(self.now_hs[i])
         #     self.out_states_lst.append(self.now_cs[i])
 
-        # for i in range(1,self.num_unroll):
-        #     for j in range(self.num_layers):
-        #         self.buildlstmstack_lst[i].l_i2h[j] = self.buildlstmstack_lst[0].l_i2h[j]
-        #         self.buildlstmstack_lst[i].l_h2h[j] = self.buildlstmstack_lst[0].l_h2h[j]
+        for i in range(1,self.num_unroll):
+            for j in range(self.num_layers):
+                # self.buildlstmstack[i].l_i2h[j].w = self.buildlstmstack[0].l_i2h[j]
+                # self.buildlstmstack[i].l_h2h[j] = self.buildlstmstack[0].l_h2h[j]
+                self.buildlstmstack[i].l_i2h[j].weight = self.buildlstmstack[0].l_i2h[j].weight
+                self.buildlstmstack[i].l_h2h[j].weight = self.buildlstmstack[0].l_h2h[j].weight
+                self.buildlstmstack[i].l_i2h[j].bias = self.buildlstmstack[0].l_i2h[j].bias
+                self.buildlstmstack[i].l_h2h[j].bias = self.buildlstmstack[0].l_h2h[j].bias
+                self.buildlstmstack[i].tanh[j].weight = self.buildlstmstack[0].tanh[j].weight
+                self.buildlstmstack[i].tanh[j].weight = self.buildlstmstack[0].tanh[j].weight
+
+                #net.lstmnet.buildlstmstack[0].l_i2h[0].weight
 
         #self.output = torch.cat(self.outputs, 2)
         self.output = self.outputs[0]
@@ -198,8 +206,8 @@ rnn_size = 100
 num_layers = 3
 num_unroll = 5
 #graph of net
-# x = torch.rand(3,20)
-# z = torch.zeros(3,rnn_size * num_layers * 2)
+x = torch.rand(3,20)
+z = torch.zeros(3,rnn_size * num_layers * 2)
 # model = BuildLstmStack(input_size, rnn_size, num_layers)
 # init_hs = []
 # init_cs = []
@@ -419,12 +427,13 @@ for epoch in range(1,num_epochs):
         err = LOSS(pred_prob, batch_label)
         print("loss = "+str(err.item()))
         df_dpred = err.backward()#retain_graph=True)
-        # with torch.no_grad():
-        #     for param in net.parameters(True):
-        #         param.clamp_(-4,4)
-        #         gnorm = param.norm()
-        #         if(gnorm > max_grad_norm):
-        #             param.mul_(max_grad_norm/gnorm)
+        with torch.no_grad():
+            for name, param in net.named_parameters():
+                param.clamp_(-4,4)
+                gnorm = param.norm()
+                if(gnorm > max_grad_norm):
+                    param.mul_(max_grad_norm/gnorm)
+                print(name)
         #net.l_pred_l.weight.data.clamp_(-0.01,0.01)
         # for param in self.net.parameters():
         #     param.grad.data.clamp(-1, 1)
