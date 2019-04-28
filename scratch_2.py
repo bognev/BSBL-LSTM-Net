@@ -78,10 +78,10 @@ print(batch_X_np.shape)
 # Define problem
 batch_X_cvx = Variable(output_size)
 gamma = Parameter(nonneg=True)
-objective = 0.5*sum_squares(batch_data_np-batch_X_cvx*mat_A_np) + gamma*norm1(batch_X_cvx)
-# constr = [sum(batch_X_cvx) == 0, norm(batch_X_cvx,"inf") <= 1]
-prob = Problem(Minimize(objective))#, constr)
-gamma.value = 0.5
+objective = 0.5*norm(batch_data_np-batch_X_cvx@mat_A_np,2)**2 + gamma*norm(batch_X_cvx,1)
+constr = [sum(batch_X_cvx) == 0, norm(batch_X_cvx,"inf") <= 1]
+prob = Problem(Minimize(objective), constr)
+gamma.value = 0.3
 prob.solve()
 
 plt.figure(1)

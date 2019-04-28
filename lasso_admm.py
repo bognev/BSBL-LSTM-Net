@@ -5,8 +5,8 @@ import scipy.sparse as sparse
 import matplotlib.pyplot as plt
 
 # Generate problem data
-sp.random.seed(1)
-n = 10
+# sp.random.seed(1)
+n = 100
 m = 1000
 A = np.random.rand(m, n)
 x_true = np.multiply((np.random.rand(n) > 0.8).astype(float),
@@ -19,23 +19,34 @@ gammas = np.linspace(1, 10, 11)
 x = Variable(n)
 gamma = Parameter(nonneg=True)
 objective = 0.5*sum_squares(A*x - b) + gamma*norm1(x)
-prob = Problem(Minimize(objective))
+constr = [sum(x) == 0, norm(x,"inf") <= 1]
+prob = Problem(Minimize(objective),constr)
 
 # Solve problem for different values of gamma parameter
 for gamma_val in gammas:
     gamma.value = gamma_val
     prob.solve(solver=OSQP, warm_start=True)
+    plt.figure(gamma_val)
+    plt.subplot(211)
+    plt.plot(x_true, lw=2)
+    plt.grid(True)
+    plt.subplot(212)
+    plt.plot(x.value, lw=2)
+    plt.grid(True)
+    plt.tight_layout()
 
-
-plt.figure(1)
-plt.subplot(211)
-plt.plot(x_true, lw=2)
-plt.grid(True)
-plt.subplot(212)
-plt.plot(x.value, lw=2)
-plt.grid(True)
-plt.tight_layout()
 plt.show()
+
+
+# plt.figure(1)
+# plt.subplot(211)
+# plt.plot(x_true, lw=2)
+# plt.grid(True)
+# plt.subplot(212)
+# plt.plot(x.value, lw=2)
+# plt.grid(True)
+# plt.tight_layout()
+# plt.show()
 
 # from cvxpy import *
 # import numpy as np
