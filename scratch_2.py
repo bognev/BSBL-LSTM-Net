@@ -13,7 +13,7 @@ from cvxpy import *
 import numpy as np
 import cvxopt
 from multiprocessing import Pool
-
+plt.close('all')
 dataset = 'uniform' # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), unit (+-1)
 num_nonz = 3 # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
 input_size = 20 # dimension of observation vector y
@@ -29,8 +29,9 @@ batch_data = torch.zeros(batch_size, input_size)
 batch_label = torch.zeros(batch_size, num_nonz) # for MultiClassNLLCriterion LOSS
 # torch.manual_seed(10)
 def gen_batch(batch_size, num_nonz):
-    mat_A = loadmat('matrix_corr_unit_20_100.mat')
-    mat_A = torch.FloatTensor(mat_A['A']).t()
+    # mat_A = loadmat('matrix_corr_unit_20_100.mat')
+    # mat_A = torch.Tensor(mat_A['A']).t()
+    mat_A = torch.rand(output_size,input_size)
     #print(mat_A.shape)
     batch_X = torch.Tensor(batch_size, 100)
     batch_n = torch.Tensor(batch_size, num_nonz)
@@ -44,15 +45,15 @@ def gen_batch(batch_size, num_nonz):
     batch_label = batch_label.type(torch.LongTensor)
     batch_X.zero_()
     if dataset == 'uniform':
-        batch_n.uniform_(-1,1)
-        batch_n[batch_n.gt(0)] = 1
-        batch_n[batch_n.le(0)] = -1
+        batch_n.uniform_(-0.4,0.4)
+        batch_n[batch_n.gt(0)] = batch_n[batch_n.gt(0)] + 0.1
+        batch_n[batch_n.le(0)] = batch_n[batch_n.le(0)] - 0.1
     #
     #print(batch_X.shape)
     for i in range(bs):
         for j in range(num_nonz):
             batch_X[i][batch_label[i][j]] = batch_n[i][j]
-    batch_data.copy_(torch.mm(batch_X, mat_A))
+    batch_data.copy_(batch_X@mat_A)
     print(batch_X.shape)
     print(mat_A.shape)
     return batch_label, batch_data, batch_X, mat_A
@@ -74,23 +75,38 @@ print(batch_X_np.shape)
 # batch_data_np = mat_A_np.dot(batch_X_np)
 
 # batch_data_np = mat_A_np.dot(batch_X_np).reshape(input_size,)
-
+gammas = np.linspace(0.01, 0.1, 10)
 # Define problem
 batch_X_cvx = Variable(output_size)
 gamma = Parameter(nonneg=True)
 objective = 0.5*norm(batch_data_np-batch_X_cvx@mat_A_np,2)**2 + gamma*norm(batch_X_cvx,1)
-constr = [sum(batch_X_cvx) == 0, norm(batch_X_cvx,"inf") <= 1]
-prob = Problem(Minimize(objective), constr)
-gamma.value = 0.3
+# constr = [sum(batch_X_cvx) == 0, norm(batch_X_cvx,"inf") <= 1]
+prob = Problem(Minimize(objective))#, constr)
+i=0
+# for gamma_val in gammas:
+i=i+1
+gamma.value = gammas[0]#gamma_val
 prob.solve()
-
-plt.figure(1)
+plt.figure(i)
 plt.subplot(211)
 plt.plot(batch_X_np[0], lw=2)
 plt.grid(True)
 plt.subplot(212)
 plt.plot(batch_X_cvx.value, lw=2)
 plt.grid(True)
-
 plt.tight_layout()
+
 plt.show()
+
+
+
+# plt.figure(1)
+# plt.subplot(211)
+# plt.plot(batch_X_np[0], lw=2)
+# plt.grid(True)
+# plt.subplot(212)
+# plt.plot(batch_X_cvx.value, lw=2)
+# plt.grid(True)
+#
+# plt.tight_layout()
+# plt.show()

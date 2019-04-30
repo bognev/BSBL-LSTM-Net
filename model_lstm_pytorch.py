@@ -189,6 +189,12 @@ class GetLstmNet(nn.Module):
         # print(x.shape)
         # print(init_states_input.shape)
         self.lstm_output = self.lstmnet(x, init_states_input)
+        for i in range(1,self.num_unroll):
+            for j in range(self.num_layers):
+                self.lstmnet.buildlstmstack[i].l_i2h[j].weight = self.lstmnet.buildlstmstack[0].l_i2h[j].weight
+                self.lstmnet.buildlstmstack[i].l_h2h[j].weight = self.lstmnet.buildlstmstack[0].l_h2h[j].weight
+                self.lstmnet.buildlstmstack[i].l_i2h[j].bias = self.lstmnet.buildlstmstack[0].l_i2h[j].bias
+                self.lstmnet.buildlstmstack[i].l_h2h[j].bias = self.lstmnet.buildlstmstack[0].l_h2h[j].bias
         # print(self.lstm_output.shape)
         self.pred = self.l_pred_l(self.lstm_output)
         # print(self.pred.shape)
@@ -225,9 +231,16 @@ z = torch.zeros(3,rnn_size * num_layers * 2)
 #
 model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 output = model(x,z)
-temp = make_dot(output, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
-s = Source(temp, filename="test.gv", format="png")
-s.view()
+# for i in range(1, num_unroll):
+#     for j in range(num_layers):
+#         model.lstmnet.buildlstmstack[i].l_i2h[j].weight = model.lstmnet.buildlstmstack[0].l_i2h[j].weight
+#         model.lstmnet.buildlstmstack[i].l_h2h[j].weight = model.lstmnet.buildlstmstack[0].l_h2h[j].weight
+#         model.lstmnet.buildlstmstack[i].l_i2h[j].bias = model.lstmnet.buildlstmstack[0].l_i2h[j].bias
+#         model.lstmnet.buildlstmstack[i].l_h2h[j].bias = model.lstmnet.buildlstmstack[0].l_h2h[j].bias
+print(model)
+# temp = make_dot(output, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
+# s = Source(temp, filename="test.gv", format="png")
+# s.view()
 
 # modell = nn.Sequential()
 # modell.add_module('W0', nn.Linear(8, 16))
@@ -296,7 +309,7 @@ gpu = 1 # gpu id
 batch_size = 10#250 # training batch size
 lr = 0.001 # basic learning rate
 lr_decay_startpoint = 250 #learning rate from which epoch
-num_epochs = 2#00 # total training epochs
+num_epochs = 5#00 # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
 
@@ -339,12 +352,12 @@ logger = open(logger_file, 'w')
 #logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
 #logger:close()
 
-
-
+torch.manual_seed(10)
+mat_A = torch.rand(output_size,input_size)
 
 def gen_batch(batch_size, num_nonz):
-    mat_A = loadmat('matrix_corr_unit_20_100.mat')
-    mat_A = torch.FloatTensor(mat_A['A']).t()
+    # mat_A = loadmat('matrix_corr_unit_20_100.mat')
+    # mat_A = torch.FloatTensor(mat_A['A']).t()
     #print(mat_A.shape)
     batch_X = torch.Tensor(batch_size, 100)
     batch_n = torch.Tensor(batch_size, num_nonz)
@@ -358,9 +371,9 @@ def gen_batch(batch_size, num_nonz):
     batch_label = batch_label.type(torch.LongTensor)
     batch_X.zero_()
     if dataset == 'uniform':
-        batch_n.uniform_(-1,1)
-        batch_n[batch_n.gt(0)] = 1
-        batch_n[batch_n.le(0)] = -1
+        batch_n.uniform_(-0.4,0.4)
+        batch_n[batch_n.gt(0)] = batch_n[batch_n.gt(0)] + 0.1
+        batch_n[batch_n.le(0)] = batch_n[batch_n.le(0)] - 0.1
     #
     #print(batch_X.shape)
     for i in range(bs):
@@ -395,7 +408,7 @@ net.to(device)
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
 
 # create a stochastic gradient descent optimizer
-optimizer = optim.RMSprop(net.parameters(), lr=lr)
+optimizer = optim.RMSprop(params=net.parameters(), lr=lr, )
 # create a loss function
 LOSS = MultiClassNLLCriterion()
 
