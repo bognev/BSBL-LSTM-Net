@@ -408,7 +408,7 @@ net.to(device)
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
 
 # create a stochastic gradient descent optimizer
-optimizer = optim.RMSprop(params=net.parameters(), lr=lr, )
+optimizer = optim.RMSprop(params=net.parameters(), lr=0.01, alpha=0.99, eps=1e-08, weight_decay=0, momentum=0, centered=False)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
 
@@ -510,7 +510,9 @@ for epoch in range(1,num_epochs):
 
 #print(end - start)
 
-
+# temp = make_dot(pred_prob, params=dict(list(net.named_parameters())+ [('batch_data', batch_data)]+ [('batch_zero_states', batch_zero_states)]))
+# s = Source(temp, filename="test.gv", format="png")
+# s.view()
 
 
 
