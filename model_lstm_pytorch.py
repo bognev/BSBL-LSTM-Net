@@ -229,15 +229,15 @@ z = torch.zeros(3,rnn_size * num_layers * 2)
 # s = Source(temp, filename="BuildLstmUnrollNet.gv", format="png")
 # s.view()
 #
-model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-output = model(x,z)
+# model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+# output = model(x,z)
 # for i in range(1, num_unroll):
 #     for j in range(num_layers):
 #         model.lstmnet.buildlstmstack[i].l_i2h[j].weight = model.lstmnet.buildlstmstack[0].l_i2h[j].weight
 #         model.lstmnet.buildlstmstack[i].l_h2h[j].weight = model.lstmnet.buildlstmstack[0].l_h2h[j].weight
 #         model.lstmnet.buildlstmstack[i].l_i2h[j].bias = model.lstmnet.buildlstmstack[0].l_i2h[j].bias
 #         model.lstmnet.buildlstmstack[i].l_h2h[j].bias = model.lstmnet.buildlstmstack[0].l_h2h[j].bias
-print(model)
+# print(model)
 # temp = make_dot(output, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
 # s = Source(temp, filename="test.gv", format="png")
 # s.view()
@@ -307,7 +307,7 @@ def AccM(label, pred_prob):
 
 gpu = 1 # gpu id
 batch_size = 10#250 # training batch size
-lr = 0.001 # basic learning rate
+lr = 0.002 # basic learning rate
 lr_decay_startpoint = 250 #learning rate from which epoch
 num_epochs = 5#00 # total training epochs
 max_grad_norm = 5.0
@@ -408,7 +408,7 @@ net.to(device)
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
 
 # create a stochastic gradient descent optimizer
-optimizer = optim.RMSprop(params=net.parameters(), lr=0.01, alpha=0.99, eps=1e-08, weight_decay=0, momentum=0, centered=False)
+optimizer = optim.RMSprop(params=net.parameters(), lr=0.002, alpha=0.99, eps=1e-08, weight_decay=0, momentum=0, centered=False)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
 
