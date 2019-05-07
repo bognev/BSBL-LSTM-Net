@@ -3,10 +3,10 @@ import torchvision
 import torch.nn as nn
 import torch.optim as optim
 from mat4py import loadmat
-#from torchsummary import summary
-from graphviz import Digraph
-from torchviz import make_dot
-from graphviz import Source
+# #from torchsummary import summary
+# from graphviz import Digraph
+# from torchviz import make_dot
+# from graphviz import Source
 
 import time
 
@@ -23,24 +23,6 @@ class BuildLstmStack(nn.Module):
         self.rnn_size = rnn_size
         self.num_layers = num_layers
         self.all_layers = []
-
-
-        # self.l_nb = nn.ModuleList(l_bn_lst)
-        # for L in range(num_layers):
-        #     setattr(self, 'layer_i2h_%d' % L, self.l_i2h)
-        #     setattr(self, 'layer_h2h_%d' % L, self.l_h2h)
-        #     # setattr(self, 'layer_bnorm_%d' % L, self.l_bn)
-
-        # sigmoid_lst = [torch.nn.Sigmoid()]
-        # tanh_lst = [torch.nn.Tanh()]
-        # for L in range(1,self.num_layers):
-        #     sigmoid_lst.append(torch.nn.Sigmoid())
-        #     tanh_lst.append(torch.nn.Tanh())
-
-        # self.sigmoid = torch.nn.Sigmoid()#nn.ModuleList(sigmoid_lst)
-        # self.tanh = torch.nn.Tanh()#nn.ModuleList(tanh_lst)
-
-
         l_i2h_lst = [nn.Linear(self.input_size, 4 * self.rnn_size)]
         l_h2h_lst = [nn.Linear(self.rnn_size, 4 * self.rnn_size)]
         # l_bn_lst = [nn.BatchNorm1d(4 * self.rnn_size)]
@@ -87,28 +69,13 @@ class BuildLstmUnrollNet(nn.Module):
 
     def __init__(self, num_unroll, num_layers, rnn_size, input_size):
         super(BuildLstmUnrollNet, self).__init__()
-
         self.num_unroll = num_unroll
         self.num_layers = num_layers
         self.rnn_size = rnn_size
         self.input_size = input_size
-
-        # self.init_hs = []
-        # self.init_cs = []
-
-        # self.out = []
-        # self.out_states_lst = []
         self.outputs = []
-        # self.out_states = []
         self.output = []
-
-
         self.now_h, self.now_c = [], []
-
-        # self.out_states_lst = []
-        # self.i2h_lst = []
-        # self.h2h_lst = []
-
         self.buildlstmstack_lst = []
         for i in range(0, self.num_unroll):
             self.buildlstmstack_lst.append(BuildLstmStack(self.input_size, self.rnn_size, self.num_layers))
@@ -137,33 +104,13 @@ class BuildLstmUnrollNet(nn.Module):
             self.now_hs.append(self.now_h)
             self.now_cs.append(self.now_c)
             #self.outputs.append(torch.cat(self.now_hs[-1],1))
-            self.outputs.append(self.now_hs[i][-1])#.reshape((self.num_layers, init_states_input.size(0), self.rnn_size)))
+            self.outputs.append(self.now_hs[i][-1])
             # for L in range(self.num_layers):
             #     setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
             #     setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
-
-        # for i in range(self.num_layers):
-        #     self.out_states_lst.append(self.now_hs[i])
-        #     self.out_states_lst.append(self.now_cs[i])
-
-        # for i in range(1,self.num_unroll):
-        #     for j in range(self.num_layers):
-        #         # self.buildlstmstack[i].l_i2h[j].w = self.buildlstmstack[0].l_i2h[j]
-        #         # self.buildlstmstack[i].l_h2h[j] = self.buildlstmstack[0].l_h2h[j]
-        #         self.buildlstmstack[i].l_i2h[j].weight = self.buildlstmstack[0].l_i2h[j].weight
-        #         self.buildlstmstack[i].l_h2h[j].weight = self.buildlstmstack[0].l_h2h[j].weight
-        #         self.buildlstmstack[i].l_i2h[j].bias = self.buildlstmstack[0].l_i2h[j].bias
-        #         self.buildlstmstack[i].l_h2h[j].bias = self.buildlstmstack[0].l_h2h[j].bias
-        #         self.buildlstmstack[i].tanh[j].weight = self.buildlstmstack[0].tanh[j].weight
-        #         self.buildlstmstack[i].tanh[j].weight = self.buildlstmstack[0].tanh[j].weight
-
-                #net.lstmnet.buildlstmstack[0].l_i2h[0].weight
-
-        #self.output = torch.cat(self.outputs, 2)
         self.output = self.outputs[0]
         for i in range(1, self.num_unroll):
             self.output = torch.cat((self.output, self.outputs[i]),1)
-        #print(self.output.shape)
 
         return self.output
 
@@ -172,38 +119,30 @@ class GetLstmNet(nn.Module):
 
     def __init__(self, num_unroll, num_layers, rnn_size, output_size, input_size):
         super(GetLstmNet,self).__init__()
-
-        # self.lstm_input = []
-        # self.lstm_output = []
-        # self.init_states = []
-        # self.out_states = []
         self.num_unroll, self.num_layers, self.rnn_size, self.output_size, self.input_size  = num_unroll, num_layers, rnn_size, output_size, input_size
         self.l_pred_l = nn.Linear(self.num_unroll * self.rnn_size, self.output_size)
-        #self.l_pred_bn = nn.BatchNorm1d(self.output_size)
-        # self.pred = []
         self.lstmnet = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
-        # setattr(self, 'LstmUnrollNet', self.lstmnet)
         # setattr(self, 'LstmNetLinear', self.l_pred_l)
 
     def forward(self, x, init_states_input):
-        # print(x.shape)
-        # print(init_states_input.shape)
         self.lstm_output = self.lstmnet(x, init_states_input)
         for i in range(1,self.num_unroll):
             for j in range(self.num_layers):
-                self.lstmnet.buildlstmstack[i].l_i2h[j].weight = self.lstmnet.buildlstmstack[0].l_i2h[j].weight
-                self.lstmnet.buildlstmstack[i].l_h2h[j].weight = self.lstmnet.buildlstmstack[0].l_h2h[j].weight
-                self.lstmnet.buildlstmstack[i].l_i2h[j].bias = self.lstmnet.buildlstmstack[0].l_i2h[j].bias
-                self.lstmnet.buildlstmstack[i].l_h2h[j].bias = self.lstmnet.buildlstmstack[0].l_h2h[j].bias
-        # print(self.lstm_output.shape)
+                self.lstmnet.buildlstmstack[i].l_i2h[j].weight.data = self.lstmnet.buildlstmstack[0].l_i2h[j].weight.data
+                self.lstmnet.buildlstmstack[i].l_h2h[j].weight.data = self.lstmnet.buildlstmstack[0].l_h2h[j].weight.data
+                self.lstmnet.buildlstmstack[i].l_i2h[j].bias.data = self.lstmnet.buildlstmstack[0].l_i2h[j].bias.data
+                self.lstmnet.buildlstmstack[i].l_h2h[j].bias.data = self.lstmnet.buildlstmstack[0].l_h2h[j].bias.data
+                self.lstmnet.buildlstmstack[i].l_i2h[j].weight.grad = self.lstmnet.buildlstmstack[0].l_i2h[j].weight.grad
+                self.lstmnet.buildlstmstack[i].l_h2h[j].weight.grad = self.lstmnet.buildlstmstack[0].l_h2h[j].weight.grad
+                self.lstmnet.buildlstmstack[i].l_i2h[j].bias.grad = self.lstmnet.buildlstmstack[0].l_i2h[j].bias.grad
+                self.lstmnet.buildlstmstack[i].l_h2h[j].bias.grad = self.lstmnet.buildlstmstack[0].l_h2h[j].bias.grad
         self.pred = self.l_pred_l(self.lstm_output)
-        # print(self.pred.shape)
         return self.pred
 
 ###########Usage#######################################
 
 input_size = 20
-output_size = 10
+output_size = 50
 rnn_size = 10
 num_layers = 2
 num_unroll = 3
@@ -258,7 +197,7 @@ class MultiClassNLLCriterion(torch.nn.Module):
 
     def __init__(self):
         super(MultiClassNLLCriterion, self).__init__()
-        self.lsm = nn.LogSoftmax()
+        self.lsm = nn.LogSoftmax(dim=1)
         self.nll = nn.NLLLoss()
         self.output = 0
         self.outputs = 0
@@ -271,7 +210,7 @@ class MultiClassNLLCriterion(torch.nn.Module):
         # print(target.shape)
         for i in range(0,shape[1]):
             self.outputs = self.outputs + self.nll(self.output,target[:,i].squeeze())
-        return self.outputs/shape[1]
+        return self.outputs#/shape[1]
 
 
 #match number
@@ -282,7 +221,7 @@ def AccS(label, pred_prob):
     t_score = torch.zeros(label.shape)
     for i in range(0, num_nonz):
         for j in range(0, num_nonz):
-            t_score[:,i].add(label[:,i].float().eq(pred[:,j]).float())
+            t_score[:,i].add_(label[:,i].float().eq(pred[:,j]).float())
     return t_score.mean()
 #loose match
 def AccL(label, pred_prob):
@@ -292,7 +231,7 @@ def AccL(label, pred_prob):
     t_score = torch.zeros(label.shape)
     for i in range(0, num_nonz):
         for j in range(0, 20):
-            t_score[:,i].add(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
+            t_score[:,i].add_(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
     return t_score.mean()
 #sctrict match
 def AccM(label, pred_prob):
@@ -302,14 +241,14 @@ def AccM(label, pred_prob):
     t_score = torch.zeros(label.shape)
     for i in range(0, num_nonz):
         for j in range(0, num_nonz):
-            t_score[:,i].add(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
+            t_score[:,i].add_(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
     return t_score.sum(1).eq(num_nonz).sum() * 1./ pred.shape[0]
 
 gpu = 1 # gpu id
-batch_size = 10#250 # training batch size
+batch_size = 250 #10# training batch size
 lr = 0.002 # basic learning rate
 lr_decay_startpoint = 250 #learning rate from which epoch
-num_epochs = 5#00 # total training epochs
+num_epochs = 500 # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
 
@@ -325,13 +264,13 @@ rnn_size = 425 # number of units in RNN cell
 num_layers = 2 # number of stacked RNN layers
 num_unroll = 11 # number of RNN unrolled time steps
 
-torch.set_num_threads(2)
-manualSeed = torch.randint(1,10000,(1,))
-print("Random seed " + str(manualSeed.item()))
+torch.set_num_threads(10)
+# manualSeed = torch.randint(1,10000,(1,))
+# print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
 
-train_size = 100#600000
-valid_size = 10#100000
+train_size = 600000#100
+valid_size = 100000#10#
 valid_data = torch.zeros(valid_size, input_size)
 valid_label = torch.zeros(valid_size, num_nonz)
 batch_data = torch.zeros(batch_size, input_size)
@@ -352,12 +291,12 @@ logger = open(logger_file, 'w')
 #logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
 #logger:close()
 
-torch.manual_seed(10)
-mat_A = torch.rand(output_size,input_size)
+# torch.manual_seed(10)
+# mat_A = torch.rand(output_size,input_size)
 
 def gen_batch(batch_size, num_nonz):
-    # mat_A = loadmat('matrix_corr_unit_20_100.mat')
-    # mat_A = torch.FloatTensor(mat_A['A']).t()
+    mat_A = loadmat('matrix_corr_unit_20_100.mat')
+    mat_A = torch.FloatTensor(mat_A['A']).t()
     #print(mat_A.shape)
     batch_X = torch.Tensor(batch_size, 100)
     batch_n = torch.Tensor(batch_size, num_nonz)
@@ -408,16 +347,19 @@ net.to(device)
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
 
 # create a stochastic gradient descent optimizer
-optimizer = optim.RMSprop(params=net.parameters(), lr=0.002, alpha=0.99, eps=1e-08, weight_decay=0, momentum=0, centered=False)
+# optimizer = optim.RMSprop(params=net.parameters(), lr=0.001, alpha=0.9, eps=1e-04, weight_decay=0.0001, momentum=0, centered=False)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
-
+optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'], alpha=0.99, eps=1e-04, weight_decay=0.0001,
+                                  momentum=0, centered=False)
 
 for epoch in range(1,num_epochs):
     #learing rate self - adjustment
     if(epoch > 250):
         optimState['learningRate'] = base_lr / (1 + 0.06 * (epoch - base_epoch))
         if(epoch % 50 == 0): base_epoch = epoch; base_lr= base_lr * 0.25
+
+
     logger = open(logger_file, 'a')
     #train
     train_accs = 0
@@ -434,18 +376,13 @@ for epoch in range(1,num_epochs):
         pred_prob = net(batch_data, batch_zero_states) #0 or 1?!
 
         err = LOSS(pred_prob, batch_label)
-        print("loss = "+str(err.item()))
-        df_dpred = err.backward()#retain_graph=True)
-        with torch.no_grad():
-            for name, param in net.named_parameters():
-                param.clamp_(-4,4)
-                gnorm = param.norm()
-                if(gnorm > max_grad_norm):
-                    param.mul_(max_grad_norm/gnorm)
-                # print(name)
-        #net.l_pred_l.weight.data.clamp_(-0.01,0.01)
-        # for param in self.net.parameters():
-        #     param.grad.data.clamp(-1, 1)
+        df_dpred = err.backward()
+        # with torch.no_grad():
+        #     for param in net.parameters():
+        #         param.grad.data.clamp_(-4,4)
+        #         gnorm = param.grad.norm()
+        #         if(gnorm > max_grad_norm):
+        #             param.grad.mul_(max_grad_norm/gnorm)
         optimizer.step()
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
@@ -455,13 +392,14 @@ for epoch in range(1,num_epochs):
         train_accm = train_accm + batch_accm
         train_err = train_err + err
         nbatch = nbatch + 1
+        print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " loss = " + str(err.item()))
         if nbatch % 512 == 1:
-            print("{} {} {} err {}\n".format(batch_accs, batch_accl, batch_accm, err))
+            print("{} {} {} err {}".format(batch_accs, batch_accl, batch_accm, err.item()))
     end = time.time()
-    print("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
+    print("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
                                                                         train_accs / nbatch, train_accl / nbatch,\
                                                                         train_accm / nbatch, train_err / nbatch))
-    logger.write("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
+    logger.write("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
                                                                         train_accs / nbatch, train_accl / nbatch,\
                                                                         train_accm / nbatch, train_err / nbatch))
 
@@ -485,10 +423,10 @@ for epoch in range(1,num_epochs):
         valid_accm = valid_accm + batch_accm
         valid_err = valid_err + err
         nbatch = nbatch + 1
-    print("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
+    print("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
                                                                         valid_accs / nbatch, valid_accl / nbatch,\
                                                                         valid_accm / nbatch, valid_err / nbatch))
-    logger.write("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
+    logger.write("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
                                                                         valid_accs / nbatch, valid_accl / nbatch,\
                                                                         train_accm / nbatch, valid_err / nbatch))
     if(valid_accs > best_valid_accs):
