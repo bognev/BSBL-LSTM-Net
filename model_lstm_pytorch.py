@@ -398,7 +398,8 @@ for epoch in range(epoch,num_epochs):
         train_accm = train_accm + batch_accm.item()
         train_err = train_err + err
         nbatch = nbatch + 1
-        print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {} {} {} loss = {}".format(batch_accs, batch_accl,
+        if nbatch % 100 == 0:
+            print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {} {} {} loss = {}".format(batch_accs, batch_accl,
                                                                                             batch_accm, err.item()))
         # print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " loss = " + str(err.item()))
         # if nbatch % 512 == 1:
@@ -444,15 +445,20 @@ for epoch in range(epoch,num_epochs):
         checkpoint = {'epoch': epoch,
                       'model_state_dict': net.state_dict(),
                       'optimizer_state_dict': optimizer.state_dict(),
-                      'loss': err}
+                      'loss': err.item()}
         # torch.save(checkpoint, 'checkpoint.pth')
         torch.save(checkpoint, "./checkpoints/"+model_all+"_"+str(num_nonz)+".pth") #or torch.save(net, PATH)
         #net.load_state_dict(torch.load(PATH)) # or the_model = torch.load(PATH)
 
-    if(epoch % 100 == 0):
+    # if(epoch % 2 == 0):
         print("saving model")
-        torch.save(net.state_dict(), "./checkpoints/" + model_all + "_" + str(num_nonz) + "_"+str(epoch)+".pt")  # or torch.save(net, PATH)
-
+        logger.write('saving model\n')
+        checkpoint = {'epoch': epoch,
+                      'model_state_dict': net.state_dict(),
+                      'optimizer_state_dict': optimizer.state_dict(),
+                      'loss': err.item()}
+        # torch.save(checkpoint, 'checkpoint.pth')
+        torch.save(checkpoint, "./checkpoints/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     logger.close()
     if epoch == lr_decay_startpoint:
         optimState["learningRate"] = 0.001
