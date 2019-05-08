@@ -264,7 +264,7 @@ rnn_size = 425 # number of units in RNN cell
 num_layers = 2 # number of stacked RNN layers
 num_unroll = 11 # number of RNN unrolled time steps
 
-torch.set_num_threads(10)
+torch.set_num_threads(16)
 # manualSeed = torch.randint(1,10000,(1,))
 # print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
@@ -350,10 +350,16 @@ net.to(device)
 # optimizer = optim.RMSprop(params=net.parameters(), lr=0.001, alpha=0.9, eps=1e-04, weight_decay=0.0001, momentum=0, centered=False)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
-optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'], alpha=0.99, eps=1e-04, weight_decay=0.0001,
-                                  momentum=0, centered=False)
+optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'],\
+                          alpha=0.99, eps=1e-04, weight_decay=0.0001, momentum=0, centered=False)
 
-for epoch in range(1,num_epochs):
+# checkpoint = torch.load( "./checkpoints/model_l_2t_11_rnn_425_3.pt")
+# net.load_state_dict(checkpoint['model_state_dict'])
+# optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+# epoch = checkpoint['epoch']
+# loss = checkpoint['loss']
+epoch=0
+for epoch in range(epoch,num_epochs):
     #learing rate self - adjustment
     if(epoch > 250):
         optimState['learningRate'] = base_lr / (1 + 0.06 * (epoch - base_epoch))
@@ -387,19 +393,21 @@ for epoch in range(1,num_epochs):
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob.float())
-        train_accs = train_accs + batch_accs
-        train_accl = train_accl + batch_accl
-        train_accm = train_accm + batch_accm
+        train_accs = train_accs + batch_accs.item()
+        train_accl = train_accl + batch_accl.item()
+        train_accm = train_accm + batch_accm.item()
         train_err = train_err + err
         nbatch = nbatch + 1
-        print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " loss = " + str(err.item()))
-        if nbatch % 512 == 1:
-            print("{} {} {} err {}".format(batch_accs, batch_accl, batch_accm, err.item()))
+        print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {} {} {} loss = {}".format(batch_accs, batch_accl,
+                                                                                            batch_accm, err.item()))
+        # print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " loss = " + str(err.item()))
+        # if nbatch % 512 == 1:
+        #     print("Epoch " + str(epoch) + " Batch " + str(nbatch) + "{} {} {} loss = {}".format(batch_accs, batch_accl, batch_accm, err.item()))
     end = time.time()
     print("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
                                                                         train_accs / nbatch, train_accl / nbatch,\
                                                                         train_accm / nbatch, train_err / nbatch))
-    logger.write("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
+    logger.write("Train {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
                                                                         train_accs / nbatch, train_accl / nbatch,\
                                                                         train_accm / nbatch, train_err / nbatch))
 
@@ -426,19 +434,24 @@ for epoch in range(1,num_epochs):
     print("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
                                                                         valid_accs / nbatch, valid_accl / nbatch,\
                                                                         valid_accm / nbatch, valid_err / nbatch))
-    logger.write("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
+    logger.write("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}\n".format(epoch, end - start, \
                                                                         valid_accs / nbatch, valid_accl / nbatch,\
                                                                         train_accm / nbatch, valid_err / nbatch))
     if(valid_accs > best_valid_accs):
         best_valid_accs = valid_accs
         print("saving model")
         logger.write('saving model\n')
-        torch.save(net.state_dict(), "./checkpoints/"+model_all+"."+str(num_nonz)+".pt") #or torch.save(net, PATH)
+        checkpoint = {'epoch': epoch,
+                      'model_state_dict': net.state_dict(),
+                      'optimizer_state_dict': optimizer.state_dict(),
+                      'loss': err}
+        # torch.save(checkpoint, 'checkpoint.pth')
+        torch.save(checkpoint, "./checkpoints/"+model_all+"_"+str(num_nonz)+".pth") #or torch.save(net, PATH)
         #net.load_state_dict(torch.load(PATH)) # or the_model = torch.load(PATH)
 
     if(epoch % 100 == 0):
         print("saving model")
-        torch.save(net.state_dict(), "./checkpoints/" + model_all + "." + str(num_nonz) + "."+str(epoch)+".pt")  # or torch.save(net, PATH)
+        torch.save(net.state_dict(), "./checkpoints/" + model_all + "_" + str(num_nonz) + "_"+str(epoch)+".pt")  # or torch.save(net, PATH)
 
     logger.close()
     if epoch == lr_decay_startpoint:
