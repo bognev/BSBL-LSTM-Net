@@ -34,7 +34,7 @@ def gen_groups(F, num_groups, output_size, input_size, num_nonz):
     for i in range(1,num_groups):
         label = np.concatenate((label, perm[range(num_nonz)]+i*input_size))
     x=np.zeros((num_groups*input_size))
-    x[label]=10#np.random.randn(num_groups*num_nonz)
+    x[label]=5#np.random.randn(num_groups*num_nonz)
     for i in range(num_groups):
         A[output_size*i:output_size*(i+1),i*input_size:(i+1)*input_size] = mat_A[i]
     y = F@A@x + F@np.random.randn(int(num_groups*output_size))
@@ -45,7 +45,7 @@ y, A, x = gen_groups(F, num_groups, output_size, input_size, num_nonz)
 
 # gammas = np.linspace(0.01, 0.1, 10)
 lambdas = cp.Parameter(nonneg=True)
-lambdas.value = 10
+lambdas.value = 30
 # Define problem
 x_v = cp.Variable(input_size*num_groups)
 p = cp.Variable(1)
