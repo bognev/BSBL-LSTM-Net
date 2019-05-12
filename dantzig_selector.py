@@ -25,6 +25,7 @@ max_grad_norm = 5.0
 clip_gradient = 4.0
 batch_data = torch.zeros(batch_size, input_size)
 batch_label = torch.zeros(batch_size, num_nonz) # for MultiClassNLLCriterion LOSS
+lmbd = 100
 # torch.manual_seed(10)
 def gen_groups(F, num_groups, output_size, input_size, num_nonz):
     mat_A = np.random.randn(num_groups,output_size,input_size)
@@ -34,17 +35,19 @@ def gen_groups(F, num_groups, output_size, input_size, num_nonz):
     for i in range(1,num_groups):
         label = np.concatenate((label, perm[range(num_nonz)]+i*input_size))
     x=np.zeros((num_groups*input_size))
-    x[label]=10#np.random.randn(num_groups*num_nonz)
+    x[label]=3*np.random.randn(num_groups*num_nonz)
     for i in range(num_groups):
         A[output_size*i:output_size*(i+1),i*input_size:(i+1)*input_size] = mat_A[i]
-    y = F@A@x + F@np.random.randn(int(num_groups*output_size))
-    return y,A,x,mat_A
+    n = np.random.randn(int(num_groups * output_size))
+    y = (A@x + n)
+    y_f = F@y
+    return y,A,x,y_f
 
 F = np.random.randn(int(output_size),output_size*num_groups)
-y, A, x, mat_A = gen_groups(F, num_groups, output_size, input_size, num_nonz)
+y, A, x, y_f = gen_groups(F, num_groups, output_size, input_size, num_nonz)
 
 lambdas = cp.Parameter(nonneg=True)
-lambdas.value = 30
+lambdas.value = lmbd
 # Define problem
 x_v = cp.Variable(input_size*num_groups)
 p = cp.Variable(1)
@@ -55,15 +58,31 @@ a = []
 for ii in range(input_size):
     a.append(cp.norm(x_v[ii:input_size*num_groups:input_size],2))
 
-constr = [cp.norm(y-F@A@x_v,2) <= p, sum(a) <= q]
+constr = [cp.norm(y_f-F@A@x_v,2) <= p, sum(a) <= q]
 prob = cp.Problem(cp.Minimize(objective), constr)
 prob.solve()
 # a_v = np.zeros((input_size))
 # for i in range(input_size):
 #     a_v[i] = a[i].value
 
+lambdas = cp.Parameter(nonneg=True)
+lambdas.value = lmbd
+# Define problem
+x_y = cp.Variable(input_size*num_groups)
+p = cp.Variable(1)
+q = cp.Variable(1)
+objective = 0.5*p**2+lambdas*q
+
+a = []
+for ii in range(input_size):
+    a.append(cp.norm(x_y[ii:input_size*num_groups:input_size],2))
+
+constr = [cp.norm(y-A@x_y,2) <= p, sum(a) <= q]
+prob = cp.Problem(cp.Minimize(objective), constr)
+prob.solve()
+
 lambdas_f = cp.Parameter(nonneg=True)
-lambdas_f.value = 30
+lambdas_f.value = lmbd
 # Define problem
 x_v_f = cp.Variable(input_size*num_groups)
 p_f = cp.Variable(1)
@@ -78,7 +97,7 @@ for ii in range(input_size):
 for ii in range(input_size):
     a_f.append(cp.norm(x_v_f[ii:input_size*num_groups:input_size],2))
 for ii in range(input_size):
-    d_f.append(G[ii]@(y-F@A@x_v_f))
+    d_f.append(G[ii]@(y_f-F@A@x_v_f))
 d_f_max = cp.norm(cp.abs(d_f[0]),2)
 for ii in range(1,input_size):
     d_f_max = cp.maximum(cp.norm(cp.abs(d_f[ii]),2), d_f_max)
@@ -88,14 +107,17 @@ prob_f = cp.Problem(cp.Minimize(objective_f), constr_f)
 prob_f.solve()
 
 plt.figure(1)
-plt.subplot(311)
+plt.subplot(411)
 plt.plot(x, lw=2)
 plt.grid(True)
-plt.subplot(312)
+plt.subplot(412)
 plt.plot(x_v.value, lw=2)
 plt.grid(True)
-plt.subplot(313)
+plt.subplot(413)
 plt.plot(x_v_f.value, lw=2)
+plt.grid(True)
+plt.subplot(414)
+plt.plot(x_y.value, lw=2)
 plt.grid(True)
 plt.tight_layout()
 #
