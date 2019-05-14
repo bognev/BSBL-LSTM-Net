@@ -104,10 +104,20 @@ class BuildLstmUnrollNet(nn.Module):
             self.now_hs.append(self.now_h)
             self.now_cs.append(self.now_c)
             #self.outputs.append(torch.cat(self.now_hs[-1],1))
-            self.outputs.append(self.now_hs[i][-1])
+            self.outputs.append(self.now_hs[i+1][-1])
             # for L in range(self.num_layers):
             #     setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
             #     setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
+        for i in range(1,self.num_unroll):
+            for j in range(self.num_layers):
+                self.buildlstmstack[i].l_i2h[j].weight.data = self.buildlstmstack[0].l_i2h[j].weight.data
+                self.buildlstmstack[i].l_h2h[j].weight.data = self.buildlstmstack[0].l_h2h[j].weight.data
+                self.buildlstmstack[i].l_i2h[j].bias.data = self.buildlstmstack[0].l_i2h[j].bias.data
+                self.buildlstmstack[i].l_h2h[j].bias.data = self.buildlstmstack[0].l_h2h[j].bias.data
+                self.buildlstmstack[i].l_i2h[j].weight.grad = self.buildlstmstack[0].l_i2h[j].weight.grad
+                self.buildlstmstack[i].l_h2h[j].weight.grad = self.buildlstmstack[0].l_h2h[j].weight.grad
+                self.buildlstmstack[i].l_i2h[j].bias.grad = self.buildlstmstack[0].l_i2h[j].bias.grad
+                self.buildlstmstack[i].l_h2h[j].bias.grad = self.buildlstmstack[0].l_h2h[j].bias.grad
         self.output = self.outputs[0]
         for i in range(1, self.num_unroll):
             self.output = torch.cat((self.output, self.outputs[i]),1)
@@ -126,16 +136,6 @@ class GetLstmNet(nn.Module):
 
     def forward(self, x, init_states_input):
         self.lstm_output = self.lstmnet(x, init_states_input)
-        for i in range(1,self.num_unroll):
-            for j in range(self.num_layers):
-                self.lstmnet.buildlstmstack[i].l_i2h[j].weight.data = self.lstmnet.buildlstmstack[0].l_i2h[j].weight.data
-                self.lstmnet.buildlstmstack[i].l_h2h[j].weight.data = self.lstmnet.buildlstmstack[0].l_h2h[j].weight.data
-                self.lstmnet.buildlstmstack[i].l_i2h[j].bias.data = self.lstmnet.buildlstmstack[0].l_i2h[j].bias.data
-                self.lstmnet.buildlstmstack[i].l_h2h[j].bias.data = self.lstmnet.buildlstmstack[0].l_h2h[j].bias.data
-                self.lstmnet.buildlstmstack[i].l_i2h[j].weight.grad = self.lstmnet.buildlstmstack[0].l_i2h[j].weight.grad
-                self.lstmnet.buildlstmstack[i].l_h2h[j].weight.grad = self.lstmnet.buildlstmstack[0].l_h2h[j].weight.grad
-                self.lstmnet.buildlstmstack[i].l_i2h[j].bias.grad = self.lstmnet.buildlstmstack[0].l_i2h[j].bias.grad
-                self.lstmnet.buildlstmstack[i].l_h2h[j].bias.grad = self.lstmnet.buildlstmstack[0].l_h2h[j].bias.grad
         self.pred = self.l_pred_l(self.lstm_output)
         return self.pred
 
@@ -242,7 +242,7 @@ def AccM(label, pred_prob):
     for i in range(0, num_nonz):
         for j in range(0, num_nonz):
             t_score[:,i].add_(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
-    return t_score.sum(1).eq(num_nonz).sum() * 1./ pred.shape[0]
+    return t_score.sum(1).eq(num_nonz).sum().item() * 1./ pred.shape[0]
 
 gpu = 1 # gpu id
 batch_size = 250 #10# training batch size
@@ -330,8 +330,8 @@ for i in range(0, valid_size, batch_size):
     # print("batch_data shape = " + str(batch_data.shape))
     # print("valid_data shape = " + str(valid_data.shape))
     # print(range(i,i+batch_size-1))
-    valid_data[range(i,i+batch_size), :].copy_(batch_data)
-    valid_label[range(i, i + batch_size)][:].copy_(batch_label)
+    valid_data[range(i,i + batch_size), :].copy_(batch_data)
+    valid_label[range(i, i + batch_size), :].copy_(batch_label)
 print('done')
 
 best_valid_accs = 0
@@ -353,7 +353,7 @@ LOSS = MultiClassNLLCriterion()
 optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'],\
                           alpha=0.99, eps=1e-04, weight_decay=0.0001, momentum=0, centered=False)
 
-# checkpoint = torch.load( "./checkpoints/model_l_2t_11_rnn_425_3.pt")
+# checkpoint = torch.load( "./checkpoints/model_l_2t_11_rnn_425_3.pth")
 # net.load_state_dict(checkpoint['model_state_dict'])
 # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 # epoch = checkpoint['epoch']
@@ -382,13 +382,15 @@ for epoch in range(epoch,num_epochs):
         pred_prob = net(batch_data, batch_zero_states) #0 or 1?!
 
         err = LOSS(pred_prob, batch_label)
-        df_dpred = err.backward()
-        # with torch.no_grad():
-        #     for param in net.parameters():
-        #         param.grad.data.clamp_(-4,4)
-        #         gnorm = param.grad.norm()
-        #         if(gnorm > max_grad_norm):
-        #             param.grad.mul_(max_grad_norm/gnorm)
+        err.backward()
+        with torch.no_grad():
+            for name, param in net.named_parameters():
+                print(name)
+                # print(param.grad.data)
+                param.grad.clamp_(-4.0,4.0)
+                gnorm = param.grad.norm()
+                if(gnorm > max_grad_norm):
+                    param.grad.mul_(max_grad_norm/gnorm)
         optimizer.step()
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
@@ -396,7 +398,7 @@ for epoch in range(epoch,num_epochs):
         train_accs = train_accs + batch_accs.item()
         train_accl = train_accl + batch_accl.item()
         train_accm = train_accm + batch_accm.item()
-        train_err = train_err + err
+        train_err = train_err + err.item()
         nbatch = nbatch + 1
         if nbatch % 100 == 0:
             print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {} {} {} loss = {}".format(batch_accs, batch_accl,
@@ -451,14 +453,13 @@ for epoch in range(epoch,num_epochs):
         #net.load_state_dict(torch.load(PATH)) # or the_model = torch.load(PATH)
 
     # if(epoch % 2 == 0):
-        print("saving model")
-        logger.write('saving model\n')
-        checkpoint = {'epoch': epoch,
-                      'model_state_dict': net.state_dict(),
-                      'optimizer_state_dict': optimizer.state_dict(),
-                      'loss': err.item()}
-        # torch.save(checkpoint, 'checkpoint.pth')
-        torch.save(checkpoint, "./checkpoints/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    print("saving model")
+    logger.write('saving model\n')
+    checkpoint = {'epoch': epoch, \
+                  'model_state_dict': net.state_dict(), \
+                  'optimizer_state_dict': optimizer.state_dict(), \
+                  'loss': err.item()}
+    torch.save(checkpoint, "./checkpoints/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     logger.close()
     if epoch == lr_decay_startpoint:
         optimState["learningRate"] = 0.001
