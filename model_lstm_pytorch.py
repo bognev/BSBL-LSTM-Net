@@ -385,7 +385,7 @@ for epoch in range(epoch,num_epochs):
         err.backward()
         with torch.no_grad():
             for name, param in net.named_parameters():
-                print(name)
+                # print(name)
                 # print(param.grad.data)
                 param.grad.clamp_(-4.0,4.0)
                 gnorm = param.grad.norm()
@@ -397,7 +397,7 @@ for epoch in range(epoch,num_epochs):
         batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob.float())
         train_accs = train_accs + batch_accs.item()
         train_accl = train_accl + batch_accl.item()
-        train_accm = train_accm + batch_accm.item()
+        train_accm = train_accm + batch_accm
         train_err = train_err + err.item()
         nbatch = nbatch + 1
         if nbatch % 100 == 0:
@@ -429,10 +429,10 @@ for epoch in range(epoch,num_epochs):
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob.float())
-        valid_accs = valid_accs + batch_accs
-        valid_accl = valid_accl + batch_accl
+        valid_accs = valid_accs + batch_accs.item()
+        valid_accl = valid_accl + batch_accl.item()
         valid_accm = valid_accm + batch_accm
-        valid_err = valid_err + err
+        valid_err = valid_err + err.item()
         nbatch = nbatch + 1
     print("Valid {} Time {} s-acc {} l-acc {} m-acc {} err {}".format(epoch, end - start, \
                                                                         valid_accs / nbatch, valid_accl / nbatch,\
