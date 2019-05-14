@@ -25,8 +25,8 @@ max_grad_norm = 5.0
 clip_gradient = 4.0
 batch_data = torch.zeros(batch_size, input_size)
 batch_label = torch.zeros(batch_size, num_nonz) # for MultiClassNLLCriterion LOSS
-lmbd = 10
-F_m = int(num_groups*output_size/2)
+lmbd = 100
+F_m = int(num_groups*output_size/4)
 print(F_m)
 # torch.manual_seed(10)
 def gen_groups(F, num_groups, output_size, input_size, num_nonz):
@@ -145,24 +145,73 @@ constr_f = [d_f_max <= lambdas_f]
 prob_f = cp.Problem(cp.Minimize(objective_f), constr_f)
 prob_f.solve()
 
+#y elastic group lasso
+lambdas = cp.Parameter(nonneg=True)
+mu = cp.Parameter(nonneg=True)
+lambdas.value = lmbd
+mu.value = 0.5
+# Define problem
+x_el = cp.Variable(input_size*num_groups)
+p = cp.Variable(1)
+q = cp.Variable(1)
+r = cp.Variable(1)
+objective = 0.5*p**2+lambdas*q+mu*r
+
+a, b = [], []
+for ii in range(input_size):
+    a.append(cp.norm(x_el[ii:input_size*num_groups:input_size],2))
+    # b.append()
+
+constr = [cp.norm(y-A@x_el,2) <= p, cp.sum(a) <= q, cp.norm(x_el,2)**2 <= r]
+prob = cp.Problem(cp.Minimize(objective), constr)
+prob.solve()
+
+#y sparse group lasso
+lambdas = cp.Parameter(nonneg=True)
+# alpha = cp.Parameter(nonneg=True)
+lambdas.value = lmbd
+alpha = 0.3
+# Define problem
+x_sgl = cp.Variable(input_size*num_groups)
+p = cp.Variable(1)
+q = cp.Variable(1)
+# r = cp.Variable(1)
+objective = 0.5*p**2+lambdas*q
+
+a, b = [], []
+for ii in range(input_size):
+    a.append((1-alpha)*cp.norm(x_sgl[ii:input_size*num_groups:input_size],2)\
+             +alpha*cp.norm(x_sgl[ii:input_size*num_groups:input_size],1))
+    # b.append()
+
+constr = [cp.norm(y-A@x_sgl,2) <= p, cp.sum(a) <= q]
+prob = cp.Problem(cp.Minimize(objective), constr)
+prob.solve()
+
 plt.figure(1)
-plt.subplot(611)
+plt.subplot(811)
 plt.plot(x, lw=2)
 plt.grid(True)
-plt.subplot(612)
+plt.subplot(812)
 plt.plot(x_v.value, lw=2)
 plt.grid(True)
-plt.subplot(613)
+plt.subplot(813)
 plt.plot(x_y.value, lw=2)
 plt.grid(True)
-plt.subplot(614)
+plt.subplot(814)
 plt.plot(x_v_f.value, lw=2)
 plt.grid(True)
-plt.subplot(615)
+plt.subplot(815)
 plt.plot(x_v_e.value, lw=2)
 plt.grid(True)
-plt.subplot(616)
+plt.subplot(816)
 plt.plot(x_v_y.value, lw=2)
+plt.grid(True)
+plt.subplot(817)
+plt.plot(x_el.value, lw=2)
+plt.grid(True)
+plt.subplot(818)
+plt.plot(x_sgl.value, lw=2)
 plt.grid(True)
 plt.tight_layout()
 #
