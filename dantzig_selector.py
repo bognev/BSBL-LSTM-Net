@@ -45,10 +45,10 @@ def gen_groups(F, num_groups, output_size, input_size, num_nonz):
     n = np.random.randn(int(num_groups * output_size))
     y = (A@x + n)
     y_f = F@y
-    return y,A,x,y_f
+    return y,A,x,y_f, label
 
 F = np.random.rand(int(F_m),output_size*num_groups)
-y, A, x, y_f = gen_groups(F, num_groups, output_size, input_size, num_nonz)
+y, A, x, y_f, label = gen_groups(F, num_groups, output_size, input_size, num_nonz)
 
 #meazurement group lasso
 lambdas = cp.Parameter(nonneg=True)
@@ -188,33 +188,59 @@ constr = [cp.norm(y-A@x_sgl,2) <= p, cp.sum(a) <= q]
 prob = cp.Problem(cp.Minimize(objective), constr)
 prob.solve()
 
+#y group lasso
+lambdas = cp.Parameter(nonneg=True)
+lambdas.value = lmbd
+# Define problem
+x_y2 = cp.Variable(input_size*num_groups)
+xy = np.zeros(input_size*num_groups)
+xy[label[0]:input_size*num_groups:input_size] = 0.1
+xy[label[1]:input_size*num_groups:input_size] = 0.25
+xy[label[2]:input_size*num_groups:input_size] = 0.5
+p = cp.Variable(1)
+q = cp.Variable(1)
+objective = 0.5*p**2+lambdas*q
+
+a = []
+for ii in range(input_size):
+    a.append(cp.norm(x_y[ii:input_size*num_groups:input_size],2))
+
+constr = [cp.norm(y-A@(x_y2+xy),2) <= p, sum(a) <= q]
+prob = cp.Problem(cp.Minimize(objective), constr)
+prob.solve()
+
 plt.figure(1)
-plt.subplot(811)
+plt.subplot(911)
 plt.plot(x, lw=2)
 plt.grid(True)
-plt.subplot(812)
+plt.subplot(912)
 plt.plot(x_v.value, lw=2)
 plt.grid(True)
-plt.subplot(813)
+plt.subplot(913)
 plt.plot(x_y.value, lw=2)
 plt.grid(True)
-plt.subplot(814)
+plt.subplot(914)
 plt.plot(x_v_f.value, lw=2)
 plt.grid(True)
-plt.subplot(815)
+plt.subplot(915)
 plt.plot(x_v_e.value, lw=2)
 plt.grid(True)
-plt.subplot(816)
+plt.subplot(916)
 plt.plot(x_v_y.value, lw=2)
 plt.grid(True)
-plt.subplot(817)
+plt.subplot(917)
 plt.plot(x_el.value, lw=2)
 plt.grid(True)
-plt.subplot(818)
+plt.subplot(918)
 plt.plot(x_sgl.value, lw=2)
 plt.grid(True)
+
 plt.tight_layout()
 #
+plt.figure(2)
+plt.subplot(111)
+plt.plot(x_y2.value, lw=2)
+plt.grid(True)
 plt.show()
 
 
