@@ -220,8 +220,8 @@ def AccS(label, pred_prob):
     _, pred = pred_prob.topk(num_nonz) #?!
     pred = pred.float()
     t_score = torch.zeros(label.shape).cuda()
-    print(label.get_device())
-    print(pred.get_device())
+#     print(label.get_device())
+#     print(pred.get_device())
     for i in range(0, num_nonz):
         for j in range(0, num_nonz):
             t_score[:,i].add_(label[:,i].float().eq(pred[:,j]).float())
@@ -267,7 +267,7 @@ rnn_size = 425 # number of units in RNN cell
 num_layers = 2 # number of stacked RNN layers
 num_unroll = 11 # number of RNN unrolled time steps
 
-torch.set_num_threads(16)
+# torch.set_num_threads(16)
 # manualSeed = torch.randint(1,10000,(1,))
 # print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
@@ -275,7 +275,7 @@ torch.set_default_tensor_type(torch.FloatTensor)
 train_size = 600000#100
 valid_size = 100000#10#
 valid_data = torch.zeros(valid_size, input_size).cuda()
-valid_label = torch.zeros(valid_size, num_nonz).cuda()
+valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).cuda()
 batch_data = torch.zeros(batch_size, input_size).cuda()
 batch_label = torch.zeros(batch_size, num_nonz).cuda() # for MultiClassNLLCriterion LOSS
 batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).cuda() #init_states for lstm
@@ -306,12 +306,11 @@ def gen_batch(batch_size, num_nonz, mat_A):
     batch_n = torch.Tensor(batch_size, num_nonz).cuda()
     bs = batch_size
     len = int(100 / num_nonz*num_nonz)
-    perm = torch.randperm(100)[range(len)]
-    batch_label = torch.zeros(batch_size, num_nonz).cuda()  # for MultiClassNLLCriterion LOSS
+    perm = torch.randperm(100)[range(len)].cuda()
+#     batch_label = torch.zeros(batch_size, num_nonz).type(torch.LongTensor).cuda()  # for MultiClassNLLCriterion LOSS
     for i in range(int(bs*num_nonz/len)):
-        perm = torch.cat((perm, torch.randperm(100)[range(len)]))
-    batch_label.copy_(perm[range(bs*num_nonz)].reshape([bs, num_nonz]))
-    batch_label = batch_label.type(torch.LongTensor).cuda()
+        perm = torch.cat((perm, torch.randperm(100)[range(len)].cuda()))
+    batch_label = perm[range(bs*num_nonz)].reshape([bs, num_nonz]).type(torch.LongTensor).cuda()
     batch_X.zero_()
     if dataset == 'uniform':
         batch_n.uniform_(-0.4,0.4)
@@ -325,7 +324,7 @@ def gen_batch(batch_size, num_nonz, mat_A):
     for i in range(bs):
         for j in range(num_nonz):
             batch_X[i][batch_label[i][j]] = batch_n[i][j]
-    batch_data.copy_(torch.mm(batch_X, mat_A))
+    batch_data = torch.mm(batch_X, mat_A)
     # print(batch_label.shape)
     # print(batch_data.shape)
     return batch_label, batch_data
@@ -338,8 +337,8 @@ for i in range(0, valid_size, batch_size):
     # print("batch_data shape = " + str(batch_data.shape))
     # print("valid_data shape = " + str(valid_data.shape))
     # print(range(i,i+batch_size-1))
-    valid_data[range(i, i + batch_size), :].copy_(batch_data)
-    valid_label[range(i, i + batch_size), :].copy_(batch_label)
+    valid_data[range(i, i + batch_size), :] = batch_data
+    valid_label[range(i, i + batch_size), :] = batch_label
 print('done')
 
 best_valid_accs = 0
@@ -361,7 +360,7 @@ LOSS = MultiClassNLLCriterion()
 optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'],\
                           alpha=0.99, eps=1e-05, weight_decay=optimState['weigthDecay'], momentum=0.1, centered=False)
 
-# checkpoint = torch.load( "./checkpoints/model_l_2t_11_rnn_425_3.pth")
+# checkpoint = torch.load( "./model_l_2t_11_rnn_425_3.pth")
 # net.load_state_dict(checkpoint['model_state_dict'])
 # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 # epoch = checkpoint['epoch'] + 1
@@ -434,8 +433,8 @@ for epoch in range(epoch,num_epochs):
     start = time.time()
     net.eval()
     for i in range(0,valid_size,batch_size):
-        batch_data.copy_(valid_data[range(i, i + batch_size),:])
-        batch_label[:,range(0, num_nonz)].copy_(valid_label[range(i, i + batch_size), :])
+        batch_data = valid_data[range(i, i + batch_size),:]
+        batch_label[:,range(0, num_nonz)] = valid_label[range(i, i + batch_size), :]
         pred_prob = net(batch_data,batch_zero_states)
         err = LOSS(pred_prob, batch_label)
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
@@ -446,6 +445,9 @@ for epoch in range(epoch,num_epochs):
         valid_accm = valid_accm + batch_accm
         valid_err = valid_err + err.item()
         nbatch = nbatch + 1
+        if (nbatch+50) % 50 == 0:
+            print("Eval Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(batch_accs, batch_accl,
+                                                                                            batch_accm, err.item()))
     end = time.time()
     print("Valid [{}] Time {} s-acc {:.4} l-acc {:.4} m-acc {:.4} err {:.4}".format(epoch, end - start, \
                                                                         valid_accs / nbatch, valid_accl / nbatch,\
@@ -472,7 +474,7 @@ for epoch in range(epoch,num_epochs):
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
                   'loss': err.item()}
-    torch.save(checkpoint, "./checkpoints/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     logger.close()
     # if epoch == lr_decay_startpoint:
     #     optimState["learningRate"] = 0.001

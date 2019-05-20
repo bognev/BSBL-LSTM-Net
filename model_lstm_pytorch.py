@@ -246,7 +246,7 @@ def AccM(label, pred_prob):
     return t_score.sum(1).eq(num_nonz).sum().item() * 1./ pred.shape[0]
 
 gpu = 1 # gpu id
-batch_size = 250 #10# training batch size
+batch_size = 10# training batch size
 lr = 0.002 # basic learning rate
 lr_decay_startpoint = 250 #learning rate from which epoch
 num_epochs = 500 # total training epochs
@@ -270,8 +270,8 @@ torch.set_num_threads(16)
 # print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
 
-train_size = 600000#100
-valid_size = 100000#10#
+train_size = 100
+valid_size = 40#
 valid_data = torch.zeros(valid_size, input_size)
 valid_label = torch.zeros(valid_size, num_nonz)
 batch_data = torch.zeros(batch_size, input_size)
@@ -305,11 +305,11 @@ def gen_batch(batch_size, num_nonz, mat_A):
     bs = batch_size
     len = int(100 / num_nonz*num_nonz)
     perm = torch.randperm(100)[range(len)]
-    batch_label = torch.zeros(batch_size, num_nonz)  # for MultiClassNLLCriterion LOSS
+    batch_label = torch.zeros(batch_size, num_nonz).type(torch.LongTensor)  # for MultiClassNLLCriterion LOSS
     for i in range(int(bs*num_nonz/len)):
         perm = torch.cat((perm, torch.randperm(100)[range(len)]))
     batch_label.copy_(perm[range(bs*num_nonz)].reshape([bs, num_nonz]))
-    batch_label = batch_label.type(torch.LongTensor)
+    # batch_label.copy_(batch_label)
     batch_X.zero_()
     if dataset == 'uniform':
         batch_n.uniform_(-0.4,0.4)
@@ -333,8 +333,14 @@ for i in range(0, valid_size, batch_size):
     # print("batch_data shape = " + str(batch_data.shape))
     # print("valid_data shape = " + str(valid_data.shape))
     # print(range(i,i+batch_size-1))
-    valid_data[range(i, i + batch_size), :].copy_(batch_data)
-    valid_label[range(i, i + batch_size), :].copy_(batch_label)
+    print(valid_data[range(i, i + batch_size), :].shape)
+    print(batch_data.shape)
+    print(valid_label[range(i, i + batch_size), :].shape)
+    print(batch_label.shape)
+    valid_data[range(i, i + batch_size), :] = (batch_data)
+    valid_label[range(i, i + batch_size), :] = batch_label.float()
+    # valid_data[range(i, i + batch_size), :].copy_(batch_data)
+    # valid_label[range(i, i + batch_size), :].copy_(batch_label)
 print('done')
 
 best_valid_accs = 0
