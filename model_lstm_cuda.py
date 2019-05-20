@@ -2,7 +2,7 @@ import torch
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
-from mat4py import loadmat
+# from mat4py import loadmat
 # #from torchsummary import summary
 # from graphviz import Digraph
 # from torchviz import make_dot
@@ -219,7 +219,9 @@ def AccS(label, pred_prob):
     num_nonz = label.shape[1]
     _, pred = pred_prob.topk(num_nonz) #?!
     pred = pred.float()
-    t_score = torch.zeros(label.shape)
+    t_score = torch.zeros(label.shape).cuda()
+    print(label.get_device())
+    print(pred.get_device())
     for i in range(0, num_nonz):
         for j in range(0, num_nonz):
             t_score[:,i].add_(label[:,i].float().eq(pred[:,j]).float())
@@ -229,7 +231,7 @@ def AccL(label, pred_prob):
     num_nonz = label.shape[1]
     _, pred = pred_prob.topk(20) #?!
     pred = pred.float()
-    t_score = torch.zeros(label.shape)
+    t_score = torch.zeros(label.shape).cuda()
     for i in range(0, num_nonz):
         for j in range(0, 20):
             t_score[:,i].add_(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
@@ -239,7 +241,7 @@ def AccM(label, pred_prob):
     num_nonz = label.shape[1]
     _, pred = pred_prob.topk(num_nonz) #?!
     pred = pred.float()
-    t_score = torch.zeros(label.shape)
+    t_score = torch.zeros(label.shape).cuda()
     for i in range(0, num_nonz):
         for j in range(0, num_nonz):
             t_score[:,i].add_(label[:,i].float().eq(pred[:,j]).float())#t_score[:,i].add(label[:,i].eq(pred[:,j])).float()
@@ -272,11 +274,11 @@ torch.set_default_tensor_type(torch.FloatTensor)
 
 train_size = 600000#100
 valid_size = 100000#10#
-valid_data = torch.zeros(valid_size, input_size)
-valid_label = torch.zeros(valid_size, num_nonz)
-batch_data = torch.zeros(batch_size, input_size)
-batch_label = torch.zeros(batch_size, num_nonz) # for MultiClassNLLCriterion LOSS
-batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2) #init_states for lstm
+valid_data = torch.zeros(valid_size, input_size).cuda()
+valid_label = torch.zeros(valid_size, num_nonz).cuda()
+batch_data = torch.zeros(batch_size, input_size).cuda()
+batch_label = torch.zeros(batch_size, num_nonz).cuda() # for MultiClassNLLCriterion LOSS
+batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).cuda() #init_states for lstm
 
 #AccM, AccL, Accs = 0, 0, 0
 
@@ -300,16 +302,16 @@ def gen_batch(batch_size, num_nonz, mat_A):
     # mat_A = torch.FloatTensor(mat_A['A']).t()
     #print(mat_A.shape)
     # mat_A = torch.rand(output_size, input_size)
-    batch_X = torch.Tensor(batch_size, 100)
-    batch_n = torch.Tensor(batch_size, num_nonz)
+    batch_X = torch.Tensor(batch_size, 100).cuda()
+    batch_n = torch.Tensor(batch_size, num_nonz).cuda()
     bs = batch_size
     len = int(100 / num_nonz*num_nonz)
     perm = torch.randperm(100)[range(len)]
-    batch_label = torch.zeros(batch_size, num_nonz)  # for MultiClassNLLCriterion LOSS
+    batch_label = torch.zeros(batch_size, num_nonz).cuda()  # for MultiClassNLLCriterion LOSS
     for i in range(int(bs*num_nonz/len)):
         perm = torch.cat((perm, torch.randperm(100)[range(len)]))
     batch_label.copy_(perm[range(bs*num_nonz)].reshape([bs, num_nonz]))
-    batch_label = batch_label.type(torch.LongTensor)
+    batch_label = batch_label.type(torch.LongTensor).cuda()
     batch_X.zero_()
     if dataset == 'uniform':
         batch_n.uniform_(-0.4,0.4)
@@ -317,6 +319,9 @@ def gen_batch(batch_size, num_nonz, mat_A):
         batch_n[batch_n.le(0)] = batch_n[batch_n.le(0)] - 0.1
     #
     #print(batch_X.shape)
+#     print(batch_X.get_device())
+#     print(mat_A.get_device())
+#     print(batch_n.get_device())
     for i in range(bs):
         for j in range(num_nonz):
             batch_X[i][batch_label[i][j]] = batch_n[i][j]
@@ -327,7 +332,7 @@ def gen_batch(batch_size, num_nonz, mat_A):
 
 print("building validation set")
 for i in range(0, valid_size, batch_size):
-    mat_A = torch.rand(output_size, input_size)
+    mat_A = torch.rand(output_size, input_size).cuda()
     batch_label, batch_data = gen_batch(batch_size, num_nonz, mat_A)
     # print(batch_label.shape)
     # print("batch_data shape = " + str(batch_data.shape))
@@ -343,8 +348,8 @@ base_lr = lr
 optimState = {'learningRate' : 0.001, 'weigthDecay' : 0.0001}
 
 net = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-print(net)
-device = torch.device('cpu')
+# print(net)
+device = torch.device('cuda')
 net.to(device)
 #summary(net,[(num_layers,input_size),(num_layers,rnn_size * num_layers * 2)])
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
@@ -356,15 +361,15 @@ LOSS = MultiClassNLLCriterion()
 optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'],\
                           alpha=0.99, eps=1e-05, weight_decay=optimState['weigthDecay'], momentum=0.1, centered=False)
 
-checkpoint = torch.load( "./checkpoints/model_l_2t_11_rnn_425_3.pth")
-net.load_state_dict(checkpoint['model_state_dict'])
-optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-epoch = checkpoint['epoch'] + 1
-loss = checkpoint['loss']
-# epoch=0
+# checkpoint = torch.load( "./checkpoints/model_l_2t_11_rnn_425_3.pth")
+# net.load_state_dict(checkpoint['model_state_dict'])
+# optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+# epoch = checkpoint['epoch'] + 1
+# loss = checkpoint['loss']
+epoch=0
 
 for epoch in range(epoch,num_epochs):
-    mat_A = torch.rand(output_size, input_size)
+    mat_A = torch.rand(output_size, input_size).cuda()
     #learing rate self - adjustment
     # if(epoch > 250):
     #     optimState['learningRate'] = base_lr / (1 + 0.06 * (epoch - base_epoch))
@@ -382,9 +387,10 @@ for epoch in range(epoch,num_epochs):
     start = time.time()
     for i in range(0,train_size,batch_size):
         batch_label, batch_data = gen_batch(batch_size, num_nonz, mat_A)
+        batch_label.cuda()
         optimizer.zero_grad()
-        pred_prob = net(batch_data, batch_zero_states) #0 or 1?!
-        err = LOSS(pred_prob, batch_label)
+        pred_prob = net(batch_data, batch_zero_states).cuda() #0 or 1?!
+        err = LOSS(pred_prob, batch_label.cuda())
         err.backward()
         with torch.no_grad():
             for name, param in net.named_parameters():
@@ -395,9 +401,11 @@ for epoch in range(epoch,num_epochs):
                 if(gnorm > max_grad_norm):
                     param.grad.mul_(max_grad_norm/gnorm)
         optimizer.step()
-        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
-        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
-        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob.float())
+#         print(pred_prob.get_device())
+#         print(batch_label.get_device())
+        batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.cuda().float())
+        batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.cuda().float())
+        batch_accm = AccM(batch_label[:, range(0, num_nonz)], pred_prob.cuda().float())
         train_accs = train_accs + batch_accs.item()
         train_accl = train_accl + batch_accl.item()
         train_accm = train_accm + batch_accm
