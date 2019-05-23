@@ -10,32 +10,40 @@ import torch.optim as optim
 
 import time
 
-from google.colab import drive
-
-drive.mount("/content/gdrive", force_remount=True)
-
-
+# from google.colab import drive
+# 
+# drive.mount("/content/gdrive", force_remount=True)
 
 
-class BuildLstmStack(nn.Module):
+
+
+class BuildGRUStack(nn.Module):
 
     def __init__(self, input_size, rnn_size, num_layers):
-        super(BuildLstmStack, self).__init__()
+        super(BuildGRUStack, self).__init__()
 
         self.input_size = input_size
         self.rnn_size = rnn_size
         self.num_layers = num_layers
         self.all_layers = []
-        l_i2h_lst = [nn.Linear(self.input_size, 4 * self.rnn_size)]
-        l_h2h_lst = [nn.Linear(self.rnn_size, 4 * self.rnn_size)]
-        l_bn_lst = [nn.BatchNorm1d(4 * self.rnn_size)]
+        l_i2h_lst = [nn.Linear(self.input_size, 2 * self.rnn_size)]
+        l_h2h_lst = [nn.Linear(self.rnn_size, 2 * self.rnn_size)]
+        l_w_lst = [nn.Linear(self.input_size, self.rnn_size)]
+        l_u_lst = [nn.Linear(self.input_size, self.rnn_size)]
+        # l_bn_lst = [nn.BatchNorm1d(4 * self.rnn_size)]
         for L in range(1, self.num_layers):
-            l_i2h_lst.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
-            l_h2h_lst.append(nn.Linear(self.rnn_size, 4 * self.rnn_size))
-            l_bn_lst.append(nn.BatchNorm1d(4 * self.rnn_size))
+            l_i2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
+            l_h2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
+            l_w_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
+            l_u_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
+            # l_bn_lst.append(nn.BatchNorm1d(4 * self.rnn_size))
         self.l_i2h = nn.ModuleList(l_i2h_lst)
         self.l_h2h = nn.ModuleList(l_h2h_lst)
-        self.l_bn = nn.ModuleList(l_bn_lst)
+        self.l_w = nn.ModuleList(l_w_lst)
+        self.l_u = nn.ModuleList(l_u_lst)
+        # self.l_bn = nn.ModuleList(l_bn_lst)
+
+
 
     def forward(self, x, prev_hs, prev_cs):
         self.x_size = []
@@ -45,6 +53,8 @@ class BuildLstmStack(nn.Module):
         self.next_cs = []
         self.i2h = []
         self.h2h = []
+        self.w = []
+        self.u = []
         for L in range(self.num_layers):
             self.prev_c = prev_cs[L]
             self.prev_h = prev_hs[L]
@@ -54,12 +64,15 @@ class BuildLstmStack(nn.Module):
                 self.x = self.next_hs[L - 1]
             self.i2h.append(self.l_i2h[L](self.x))
             self.h2h.append(self.l_h2h[L](self.prev_h))
-            all_sums = self.l_bn[L](self.i2h[L] + self.h2h[L])
-            (n1, n2, n3, n4) = all_sums.chunk(4, dim=1)  # it should return 4 tensors self.rnn_size
-            in_gate = torch.sigmoid(n1)
-            forget_gate = torch.sigmoid(n2)
-            out_gate = torch.sigmoid(n3)
-            in_transform = torch.tanh(n4)
+            self.w.append(self.l_w[L](self.x))
+            self.u.append(self.l_u[L](self.prev_h))
+            all_sums = self.i2h[L] + self.h2h[L]
+            (zn, rn) = all_sums.chunk(2, dim=1)  # it should return 4 tensors self.rnn_size
+            zt = torch.sigmoid(zn)
+            rt = torch.sigmoid(rn)
+            hc = self.w[L] + rt * self.u[L]
+            hct = torch.tanh(hc)
+            h = (1-zt)*self.prev-zt*hct
             next_c = forget_gate * self.prev_c + in_gate * in_transform
             next_h = out_gate * torch.tanh(next_c)
 
@@ -68,10 +81,10 @@ class BuildLstmStack(nn.Module):
         return torch.stack(self.next_hs), torch.stack(self.next_cs)  # , i2h, h2h
 
 
-class BuildLstmUnrollNet(nn.Module):
+class BuildGRUUnrollNet(nn.Module):
 
     def __init__(self, num_unroll, num_layers, rnn_size, input_size):
-        super(BuildLstmUnrollNet, self).__init__()
+        super(BuildGRUUnrollNet, self).__init__()
         self.num_unroll = num_unroll
         self.num_layers = num_layers
         self.rnn_size = rnn_size
@@ -79,10 +92,10 @@ class BuildLstmUnrollNet(nn.Module):
         self.outputs = []
         self.output = []
         self.now_h, self.now_c = [], []
-        self.buildlstmstack_lst = []
+        self.buildGRUstack_lst = []
         for i in range(0, self.num_unroll):
-            self.buildlstmstack_lst.append(BuildLstmStack(self.input_size, self.rnn_size, self.num_layers))
-        self.buildlstmstack = nn.ModuleList(self.buildlstmstack_lst)
+            self.buildGRUstack_lst.append(BuildGRUStack(self.input_size, self.rnn_size, self.num_layers))
+        self.buildGRUstack = nn.ModuleList(self.buildGRUstack_lst)
 
     def forward(self, x, init_states_input):
 
@@ -103,7 +116,7 @@ class BuildLstmUnrollNet(nn.Module):
         self.now_cs.append(torch.stack(self.init_cs))
 
         for i in range(self.num_unroll):
-            self.now_h, self.now_c = self.buildlstmstack[i](x, self.now_hs[i], self.now_cs[i])
+            self.now_h, self.now_c = self.buildGRUstack[i](x, self.now_hs[i], self.now_cs[i])
             self.now_hs.append(self.now_h)
             self.now_cs.append(self.now_c)
             # self.outputs.append(torch.cat(self.now_hs[-1],1))
@@ -113,14 +126,14 @@ class BuildLstmUnrollNet(nn.Module):
             #     setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
         for i in range(1, self.num_unroll):
             for j in range(self.num_layers):
-                self.buildlstmstack[i].l_i2h[j].weight.data = self.buildlstmstack[0].l_i2h[j].weight.data
-                self.buildlstmstack[i].l_h2h[j].weight.data = self.buildlstmstack[0].l_h2h[j].weight.data
-                self.buildlstmstack[i].l_i2h[j].bias.data = self.buildlstmstack[0].l_i2h[j].bias.data
-                self.buildlstmstack[i].l_h2h[j].bias.data = self.buildlstmstack[0].l_h2h[j].bias.data
-                self.buildlstmstack[i].l_i2h[j].weight.grad = self.buildlstmstack[0].l_i2h[j].weight.grad
-                self.buildlstmstack[i].l_h2h[j].weight.grad = self.buildlstmstack[0].l_h2h[j].weight.grad
-                self.buildlstmstack[i].l_i2h[j].bias.grad = self.buildlstmstack[0].l_i2h[j].bias.grad
-                self.buildlstmstack[i].l_h2h[j].bias.grad = self.buildlstmstack[0].l_h2h[j].bias.grad
+                self.buildGRUstack[i].l_i2h[j].weight.data = self.buildGRUstack[0].l_i2h[j].weight.data
+                self.buildGRUstack[i].l_h2h[j].weight.data = self.buildGRUstack[0].l_h2h[j].weight.data
+                self.buildGRUstack[i].l_i2h[j].bias.data = self.buildGRUstack[0].l_i2h[j].bias.data
+                self.buildGRUstack[i].l_h2h[j].bias.data = self.buildGRUstack[0].l_h2h[j].bias.data
+                self.buildGRUstack[i].l_i2h[j].weight.grad = self.buildGRUstack[0].l_i2h[j].weight.grad
+                self.buildGRUstack[i].l_h2h[j].weight.grad = self.buildGRUstack[0].l_h2h[j].weight.grad
+                self.buildGRUstack[i].l_i2h[j].bias.grad = self.buildGRUstack[0].l_i2h[j].bias.grad
+                self.buildGRUstack[i].l_h2h[j].bias.grad = self.buildGRUstack[0].l_h2h[j].bias.grad
         self.output = self.outputs[0]
         for i in range(1, self.num_unroll):
             self.output = torch.cat((self.output, self.outputs[i]), 1)
@@ -128,19 +141,19 @@ class BuildLstmUnrollNet(nn.Module):
         return self.output
 
 
-class GetLstmNet(nn.Module):
+class GetGRUNet(nn.Module):
 
     def __init__(self, num_unroll, num_layers, rnn_size, output_size, input_size):
-        super(GetLstmNet, self).__init__()
+        super(GetGRUNet, self).__init__()
         self.num_unroll, self.num_layers, self.rnn_size, self.output_size, self.input_size = num_unroll, num_layers, rnn_size, output_size, input_size
         self.l_pred_l = nn.Linear(self.num_unroll * self.rnn_size, self.output_size)
-        self.lstmnet = BuildLstmUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
+        self.GRUnet = BuildGRUUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
         self.l_pred_bn = nn.BatchNorm1d(self.output_size)
-        # setattr(self, 'LstmNetLinear', self.l_pred_l)
+        # setattr(self, 'GRUNetLinear', self.l_pred_l)
 
     def forward(self, x, init_states_input):
-        self.lstm_output = self.lstmnet(x, init_states_input)
-        self.pred = self.l_pred_bn(self.l_pred_l(self.lstm_output))
+        self.GRU_output = self.GRUnet(x, init_states_input)
+        self.pred = self.l_pred_bn(self.l_pred_l(self.GRU_output))
         return self.pred
 
 
@@ -156,7 +169,7 @@ x = torch.rand(3, input_size)
 z = torch.zeros(3, rnn_size * num_layers * 2)
 
 
-# model = BuildLstmStack(input_size, rnn_size, num_layers)
+# model = BuildGRUStack(input_size, rnn_size, num_layers)
 # init_hs = []
 # init_cs = []
 # init_states = z.reshape((z.size(0),num_layers * 2, rnn_size))
@@ -166,23 +179,23 @@ z = torch.zeros(3, rnn_size * num_layers * 2)
 #     init_cs.append(init_states_lst[2*i+1].reshape(num_layers,rnn_size))
 # now_hs, now_cs = model(x, init_hs, init_cs)
 # temp = make_dot((now_hs[2], now_cs[2]), params=dict(list(model.named_parameters())))
-# s = Source(temp, filename="BuildLstmStack.gv", format="png")
+# s = Source(temp, filename="BuildGRUStack.gv", format="png")
 # s.view()
 #
-# model = BuildLstmUnrollNet(num_unroll, num_layers, rnn_size, input_size)
+# model = BuildGRUUnrollNet(num_unroll, num_layers, rnn_size, input_size)
 # out = model(x, z)
 # temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
-# s = Source(temp, filename="BuildLstmUnrollNet.gv", format="png")
+# s = Source(temp, filename="BuildGRUUnrollNet.gv", format="png")
 # s.view()
 #
-# model = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+# model = GetGRUNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 # output = model(x,z)
 # for i in range(1, num_unroll):
 #     for j in range(num_layers):
-#         model.lstmnet.buildlstmstack[i].l_i2h[j].weight = model.lstmnet.buildlstmstack[0].l_i2h[j].weight
-#         model.lstmnet.buildlstmstack[i].l_h2h[j].weight = model.lstmnet.buildlstmstack[0].l_h2h[j].weight
-#         model.lstmnet.buildlstmstack[i].l_i2h[j].bias = model.lstmnet.buildlstmstack[0].l_i2h[j].bias
-#         model.lstmnet.buildlstmstack[i].l_h2h[j].bias = model.lstmnet.buildlstmstack[0].l_h2h[j].bias
+#         model.GRUnet.buildGRUstack[i].l_i2h[j].weight = model.GRUnet.buildGRUstack[0].l_i2h[j].weight
+#         model.GRUnet.buildGRUstack[i].l_h2h[j].weight = model.GRUnet.buildGRUstack[0].l_h2h[j].weight
+#         model.GRUnet.buildGRUstack[i].l_i2h[j].bias = model.GRUnet.buildGRUstack[0].l_i2h[j].bias
+#         model.GRUnet.buildGRUstack[i].l_h2h[j].bias = model.GRUnet.buildGRUstack[0].l_h2h[j].bias
 # print(model)
 # temp = make_dot(output, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
 # s = Source(temp, filename="test.gv", format="png")
@@ -261,7 +274,7 @@ def AccM(label, pred_prob):
 
 
 gpu = 1  # gpu id
-batch_size = 250  # 10# training batch size
+batch_size = 5#250  # 10# training batch size
 lr = 0.002  # basic learning rate
 lr_decay_startpoint = 250  # learning rate from which epoch
 num_epochs = 400  # total training epochs
@@ -286,13 +299,13 @@ num_unroll = 11  # number of RNN unrolled time steps
 torch.set_default_tensor_type(torch.FloatTensor)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-train_size = 600000  # 100
-valid_size = 100000  # 10#
+train_size = 100#600000  #
+valid_size = 10#100000  #
 valid_data = torch.zeros(valid_size, input_size).to(device)
 valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
 batch_data = torch.zeros(batch_size, input_size).to(device)
 batch_label = torch.zeros(batch_size, num_nonz).to(device)  # for MultiClassNLLCriterion LOSS
-batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device)  # init_states for lstm
+batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device)  # init_states for GRU
 
 # AccM, AccL, Accs = 0, 0, 0
 
@@ -308,7 +321,8 @@ logger = open(logger_file, 'w')
 
 # torch.manual_seed(10)
 # mat_A = torch.rand(output_size,input_size)
-mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
+# mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
+mat_A = torch.load("./mat_A.pt").to(device)
 
 
 def gen_batch(batch_size, num_nonz, mat_A):
@@ -361,9 +375,9 @@ base_epoch = lr_decay_startpoint
 base_lr = lr
 optimState = {'learningRate': 0.001, 'weigthDecay': 0.0000}
 
-net = GetLstmNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+net = GetGRUNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 # print(net)
-device = torch.device('cuda')
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 net.to(device)
 # summary(net,[(num_layers,input_size),(num_layers,rnn_size * num_layers * 2)])
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
