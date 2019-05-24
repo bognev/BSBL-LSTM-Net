@@ -261,9 +261,9 @@ input_size = 20 # dimension of observation vector y
 output_size = 100 # dimension of sparse vector x
 
 # model hyper parameters
-rnn_size = 425 # number of units in RNN cell
+rnn_size = 200 # number of units in RNN cell
 num_layers = 2 # number of stacked RNN layers
-num_unroll = 11 # number of RNN unrolled time steps
+num_unroll = 5 # number of RNN unrolled time steps
 
 torch.set_num_threads(16)
 # manualSeed = torch.randint(1,10000,(1,))
