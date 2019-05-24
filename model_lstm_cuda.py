@@ -312,7 +312,10 @@ logger = open(logger_file, 'w')
 
 # torch.manual_seed(10)
 # mat_A = torch.rand(output_size,input_size)
-mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
+if torch.cuda.is_available():
+    mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
+else:
+    mat_A = torch.load("./mat_A.pt").to(device)
 
 
 def gen_batch(batch_size, num_nonz, mat_A):

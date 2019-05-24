@@ -27,14 +27,14 @@ class BuildGRUStack(nn.Module):
         self.num_layers = num_layers
         l_i2h_lst = [nn.Linear(self.input_size, 3 * self.rnn_size)]
         l_h2h_lst = [nn.Linear(self.rnn_size, 3 * self.rnn_size)]
-        # l_bn_lst = [nn.BatchNorm1d(4 * self.rnn_size)]
+        l_bn_lst = [nn.BatchNorm1d(3 * self.rnn_size)]
         for L in range(1, self.num_layers):
             l_i2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
             l_h2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
-            # l_bn_lst.append(nn.BatchNorm1d(4 * self.rnn_size))
+            l_bn_lst.append(nn.BatchNorm1d(3 * self.rnn_size))
         self.l_i2h = nn.ModuleList(l_i2h_lst)
         self.l_h2h = nn.ModuleList(l_h2h_lst)
-        # self.l_bn = nn.ModuleList(l_bn_lst)
+        self.l_bn = nn.ModuleList(l_bn_lst)
 
 
     def forward(self, x, prev_hs):
@@ -49,8 +49,8 @@ class BuildGRUStack(nn.Module):
                 self.x = x
             else:
                 self.x = self.next_hs[L - 1]
-            self.i2h.append(self.l_i2h[L](self.x))
-            self.h2h.append(self.l_h2h[L](self.prev_h))
+            self.i2h.append(self.l_bn[L](self.l_i2h[L](self.x)))
+            self.h2h.append(self.l_bn[L](self.l_h2h[L](self.prev_h)))
             Wx1, Wx2, Wx3 = self.i2h[L].chunk(3, dim=1) # it should return 4 tensors self.rnn_size
             Uh1, Uh2, Uh3 = self.h2h[L].chunk(3, dim=1)
             zt = torch.sigmoid(Wx1 + Uh1)
@@ -248,7 +248,11 @@ def AccM(label, pred_prob):
 
 
 gpu = 1  # gpu id
-batch_size = 5#250  # 10# training batch size
+
+if torch.cuda.is_available():
+    batch_size = 250  # 10# training batch size
+else:
+    batch_size = 5  # 600000  #
 lr = 0.002  # basic learning rate
 lr_decay_startpoint = 250  # learning rate from which epoch
 num_epochs = 400  # total training epochs
@@ -273,8 +277,12 @@ num_unroll = 11  # number of RNN unrolled time steps
 torch.set_default_tensor_type(torch.FloatTensor)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-train_size = 100#600000  #
-valid_size = 10#100000  #
+if torch.cuda.is_available():
+    train_size = 600000  #
+    valid_size = 100000  #
+else:
+    train_size = 100  # 600000  #
+    valid_size = 10  # 100000  #
 valid_data = torch.zeros(valid_size, input_size).to(device)
 valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
 batch_data = torch.zeros(batch_size, input_size).to(device)
@@ -299,8 +307,12 @@ logger = open(logger_file, 'w')
 
 # torch.manual_seed(10)
 # mat_A = torch.rand(output_size,input_size)
+if torch.cuda.is_available():
+    mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
+else:
+    mat_A = torch.load("./mat_A.pt").to(device)
 # mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
-mat_A = torch.load("./mat_A.pt").to(device)
+
 
 
 def gen_batch(batch_size, num_nonz, mat_A):
@@ -401,7 +413,7 @@ for epoch in range(epoch, num_epochs):
         err.backward()
         with torch.no_grad():
             for name, param in net.named_parameters():
-                # print(name)
+#                 print(name)
                 # print(param.grad.data)
                 param.grad.clamp_(-4.0, 4.0)
                 gnorm = param.grad.norm()
