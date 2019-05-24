@@ -295,6 +295,10 @@ logger = open(logger_file, 'w')
 # torch.manual_seed(10)
 # mat_A = torch.rand(output_size,input_size)
 
+mat_A = loadmat('matrix_corr_unit_20_100.mat')
+mat_A = torch.FloatTensor(mat_A['A']).t()
+torch.save(mat_A,'mat_A.pt')
+
 def gen_batch(batch_size, num_nonz, mat_A):
     # mat_A = loadmat('matrix_corr_unit_20_100.mat')
     # mat_A = torch.FloatTensor(mat_A['A']).t()
