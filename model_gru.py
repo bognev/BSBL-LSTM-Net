@@ -28,6 +28,7 @@ class BuildGRUStack(nn.Module):
         l_i2h_lst = [nn.Linear(self.input_size, 3 * self.rnn_size)]
         l_h2h_lst = [nn.Linear(self.rnn_size, 3 * self.rnn_size)]
         l_bn_lst = [nn.BatchNorm1d(3 * self.rnn_size)]
+        self.l_do = nn.Dropout(0.25)
         for L in range(1, self.num_layers):
             l_i2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
             l_h2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
@@ -49,8 +50,8 @@ class BuildGRUStack(nn.Module):
                 self.x = x
             else:
                 self.x = self.next_hs[L - 1]
-            self.i2h.append(self.l_bn[L](self.l_i2h[L](self.x)))
-            self.h2h.append(self.l_bn[L](self.l_h2h[L](self.prev_h)))
+            self.i2h.append(self.l_do(self.l_bn[L](self.l_i2h[L](self.x))))
+            self.h2h.append(self.l_do(self.l_bn[L](self.l_h2h[L](self.prev_h))))
             Wx1, Wx2, Wx3 = self.i2h[L].chunk(3, dim=1) # it should return 4 tensors self.rnn_size
             Uh1, Uh2, Uh3 = self.h2h[L].chunk(3, dim=1)
             zt = torch.sigmoid(Wx1 + Uh1)
@@ -267,9 +268,9 @@ input_size = 20  # dimension of observation vector y
 output_size = 100  # dimension of sparse vector x
 
 # model hyper parameters
-rnn_size = 425  # number of units in RNN cell
+rnn_size = 200  # number of units in RNN cell
 num_layers = 2  # number of stacked RNN layers
-num_unroll = 11  # number of RNN unrolled time steps
+num_unroll = 5  # number of RNN unrolled time steps
 
 # torch.set_num_threads(16)
 # manualSeed = torch.randint(1,10000,(1,))
