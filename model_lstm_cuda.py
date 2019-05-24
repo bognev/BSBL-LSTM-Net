@@ -261,7 +261,10 @@ def AccM(label, pred_prob):
 
 
 gpu = 1  # gpu id
-batch_size = 250  # 10# training batch size
+if torch.cuda.is_available():
+    batch_size = 250  # 10# training batch size
+else:
+    batch_size = 5  # 600000  #
 lr = 0.002  # basic learning rate
 lr_decay_startpoint = 250  # learning rate from which epoch
 num_epochs = 400  # total training epochs
@@ -286,8 +289,12 @@ num_unroll = 11  # number of RNN unrolled time steps
 torch.set_default_tensor_type(torch.FloatTensor)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-train_size = 600000  # 100
-valid_size = 100000  # 10#
+if torch.cuda.is_available():
+    train_size = 600000  #
+    valid_size = 100000  #
+else:
+    train_size = 100  # 600000  #
+    valid_size = 10  # 100000  #
 valid_data = torch.zeros(valid_size, input_size).to(device)
 valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
 batch_data = torch.zeros(batch_size, input_size).to(device)
@@ -299,7 +306,7 @@ batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device
 
 err = 0
 
-model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_rnn_' + str(rnn_size)
+model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_lstm_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
 if torch.cuda.is_available():
     logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
