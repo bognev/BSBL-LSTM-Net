@@ -25,38 +25,25 @@ class BuildGRUStack(nn.Module):
         self.input_size = input_size
         self.rnn_size = rnn_size
         self.num_layers = num_layers
-        self.all_layers = []
-        l_i2h_lst = [nn.Linear(self.input_size, 2 * self.rnn_size)]
-        l_h2h_lst = [nn.Linear(self.rnn_size, 2 * self.rnn_size)]
-        l_w_lst = [nn.Linear(self.input_size, self.rnn_size)]
-        l_u_lst = [nn.Linear(self.input_size, self.rnn_size)]
+        l_i2h_lst = [nn.Linear(self.input_size, 3 * self.rnn_size)]
+        l_h2h_lst = [nn.Linear(self.rnn_size, 3 * self.rnn_size)]
         # l_bn_lst = [nn.BatchNorm1d(4 * self.rnn_size)]
         for L in range(1, self.num_layers):
-            l_i2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
-            l_h2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
-            l_w_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
-            l_u_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
+            l_i2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
+            l_h2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
             # l_bn_lst.append(nn.BatchNorm1d(4 * self.rnn_size))
         self.l_i2h = nn.ModuleList(l_i2h_lst)
         self.l_h2h = nn.ModuleList(l_h2h_lst)
-        self.l_w = nn.ModuleList(l_w_lst)
-        self.l_u = nn.ModuleList(l_u_lst)
         # self.l_bn = nn.ModuleList(l_bn_lst)
 
 
-
-    def forward(self, x, prev_hs, prev_cs):
+    def forward(self, x, prev_hs):
         self.x_size = []
-        self.prev_c = 0
         self.prev_h = 0
         self.next_hs = []
-        self.next_cs = []
         self.i2h = []
         self.h2h = []
-        self.w = []
-        self.u = []
         for L in range(self.num_layers):
-            self.prev_c = prev_cs[L]
             self.prev_h = prev_hs[L]
             if L == 0:
                 self.x = x
@@ -64,21 +51,14 @@ class BuildGRUStack(nn.Module):
                 self.x = self.next_hs[L - 1]
             self.i2h.append(self.l_i2h[L](self.x))
             self.h2h.append(self.l_h2h[L](self.prev_h))
-            self.w.append(self.l_w[L](self.x))
-            self.u.append(self.l_u[L](self.prev_h))
-            all_sums = self.i2h[L] + self.h2h[L]
-            (zn, rn) = all_sums.chunk(2, dim=1)  # it should return 4 tensors self.rnn_size
-            zt = torch.sigmoid(zn)
-            rt = torch.sigmoid(rn)
-            hc = self.w[L] + rt * self.u[L]
-            hct = torch.tanh(hc)
-            h = (1-zt)*self.prev-zt*hct
-            next_c = forget_gate * self.prev_c + in_gate * in_transform
-            next_h = out_gate * torch.tanh(next_c)
-
-            self.next_hs.append(next_h)
-            self.next_cs.append(next_c)
-        return torch.stack(self.next_hs), torch.stack(self.next_cs)  # , i2h, h2h
+            Wx1, Wx2, Wx3 = self.i2h[L].chunk(3, dim=1) # it should return 4 tensors self.rnn_size
+            Uh1, Uh2, Uh3 = self.h2h[L].chunk(3, dim=1)
+            zt = torch.sigmoid(Wx1 + Uh1)
+            rt = torch.sigmoid(Wx2 + Uh2)
+            h_candidate = torch.tanh(Wx3 + rt * Uh3)
+            ht = (1-zt) * self.prev_h + zt * h_candidate
+            self.next_hs.append(ht)
+        return torch.stack(self.next_hs)
 
 
 class BuildGRUUnrollNet(nn.Module):
@@ -91,7 +71,7 @@ class BuildGRUUnrollNet(nn.Module):
         self.input_size = input_size
         self.outputs = []
         self.output = []
-        self.now_h, self.now_c = [], []
+        self.now_h = []
         self.buildGRUstack_lst = []
         for i in range(0, self.num_unroll):
             self.buildGRUstack_lst.append(BuildGRUStack(self.input_size, self.rnn_size, self.num_layers))
@@ -100,9 +80,7 @@ class BuildGRUUnrollNet(nn.Module):
     def forward(self, x, init_states_input):
 
         self.init_hs = []
-        self.init_cs = []
         self.now_hs = []
-        self.now_cs = []
         self.outputs = []
 
         init_states = init_states_input.reshape((init_states_input.size(0), self.num_layers * 2, self.rnn_size))
@@ -110,16 +88,12 @@ class BuildGRUUnrollNet(nn.Module):
 
         for i in range(self.num_layers):
             self.init_hs.append(init_states_lst[2 * i].reshape(init_states_input.size(0), self.rnn_size))
-            self.init_cs.append(init_states_lst[2 * i + 1].reshape(init_states_input.size(0), self.rnn_size))
 
         self.now_hs.append(torch.stack(self.init_hs))
-        self.now_cs.append(torch.stack(self.init_cs))
 
         for i in range(self.num_unroll):
-            self.now_h, self.now_c = self.buildGRUstack[i](x, self.now_hs[i], self.now_cs[i])
+            self.now_h = self.buildGRUstack[i](x, self.now_hs[i])
             self.now_hs.append(self.now_h)
-            self.now_cs.append(self.now_c)
-            # self.outputs.append(torch.cat(self.now_hs[-1],1))
             self.outputs.append(self.now_hs[i + 1][-1])
             # for L in range(self.num_layers):
             #     setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
@@ -312,8 +286,12 @@ batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device
 
 err = 0
 
-model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_rnn_' + str(rnn_size)
+model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_gru_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
+if torch.cuda.is_available():
+    logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
+else:
+    logger_file = "./" + logger_file
 logger = open(logger_file, 'w')
 # for k,v in pairs(opt) do logger:write(k .. ' ' .. v ..'\n') end
 # logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
@@ -511,8 +489,10 @@ for epoch in range(epoch, num_epochs):
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
                   'loss': err.item()}
-    torch.save(checkpoint,
-               "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    if torch.cuda.is_available():
+        torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    else:
+        torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     logger.close()
 
 

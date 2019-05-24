@@ -301,6 +301,10 @@ err = 0
 
 model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_rnn_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
+if torch.cuda.is_available():
+    logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
+else:
+    logger_file = "./" + logger_file
 logger = open(logger_file, 'w')
 # for k,v in pairs(opt) do logger:write(k .. ' ' .. v ..'\n') end
 # logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
@@ -497,8 +501,11 @@ for epoch in range(epoch, num_epochs):
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
                   'loss': err.item()}
-    torch.save(checkpoint,
-               "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    if torch.cuda.is_available():
+        torch.save(checkpoint,
+                   "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    else:
+        torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     logger.close()
 
 
