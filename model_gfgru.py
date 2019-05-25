@@ -26,22 +26,28 @@ class BuildGFGRUStack(nn.Module):
         self.rnn_size = rnn_size
         self.num_layers = num_layers
         l_i2h_lst = [nn.Linear(self.input_size, 2 * self.rnn_size)]
-        l_h2h_lst = [nn.Linear(self.rnn_size, 2 * self.rnn_size)]
+        l_h2h_lst = [nn.Linear(self.rnn_size, 2 * self.rnn_size)]  * self.num_layers
+        l_wj1j_lst = [nn.Linear(self.input_size, self.rnn_size)]
         # l_bn_lst = [nn.BatchNorm1d(2 * self.rnn_size)]
         # self.l_do = nn.Dropout(0.25)
-        l_wg_lst = [nn.Linear(self.rnn_size, 1)]
-        l_ug_lst = [nn.Linear(self.num_layers * self.rnn_size, 1)]
+        l_wg_lst = [[nn.Linear(self.rnn_size, 1)] * self.num_layers] * self.num_layers
+        l_ug_lst = [[nn.Linear(self.num_layers * self.rnn_size, 1)] * self.num_layers] * self.num_layers
+        l_wj1j_lst = [nn.Linear(self.rnn_size, self.rnn_size)] * self.num_layers
         for L in range(1, self.num_layers):
             l_i2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
             l_h2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
+            l_wj1j_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
             # l_bn_lst.append(nn.BatchNorm1d(2 * self.rnn_size))
-            l_wg_lst.append(nn.Linear(self.rnn_size, 1))
-            l_ug_lst.append(nn.Linear(self.num_layers * self.rnn_size, 1))
         self.l_i2h = nn.ModuleList(l_i2h_lst)
         self.l_h2h = nn.ModuleList(l_h2h_lst)
+        self.l_wj1j = nn.ModuleList(l_wj1j_lst)
         # self.l_bn = nn.ModuleList(l_bn_lst)
-        self.l_wg = nn.ModuleList(l_wg_lst)
-        self.l_ug = nn.ModuleList(l_ug_lst)
+        self.l_wg = []
+        self.l_ug = []
+        for L in range(0, self.num_layers):
+            self.l_wg.append(nn.ModuleList(l_wg_lst[L]))
+            self.l_wg.append(nn.ModuleList(l_ug_lst[L]))
+
 
 
 
@@ -51,25 +57,29 @@ class BuildGFGRUStack(nn.Module):
         self.next_hs = []
         self.i2h = []
         self.h2h = []
-        self.g = []
+        self.g = torch.tensor([self.num_layers, self.num_layers])
         # for gg in range(1, self.num_layers):
         h_stacked = prev_hs[0]
         for L in range(1,self.num_layers):
             h_stacked = torch.cat((h_stacked, prev_hs[L]),1)
         for L in range(self.num_layers):
             self.prev_h = prev_hs[L]
+            g_l_acc = 0
             if L == 0:
                 self.x = x
             else:
                 self.x = self.next_hs[L - 1]
+            for gg in range(self.num_layers):
+                g[L,gg] = torch.tanh(self.l_wg[L,gg](self.x) + self.l_ug[L,gg](h_staked))
+                g_l_acc = g_l_acc + g[L,gg]*self.l_uij[L,gg](prev_hs[gg])
             self.i2h.append((self.l_i2h[L](self.x)))
             self.h2h.append((self.l_h2h[L](self.prev_h)))
             Wx1, Wx2 = self.i2h[L].chunk(2, dim=1) # it should return 4 tensors self.rnn_size
             Uh1, Uh2 = self.h2h[L].chunk(2, dim=1)
             zt = torch.sigmoid(Wx1 + Uh1)
             rt = torch.sigmoid(Wx2 + Uh2)
-            # h_candidate = torch.tanh(Wx3 + rt * Uh3)
-            self.g.append(torch.tanh(self.l_wg[L](self.x) + self.l_ug[L](h_staked)))
+            h_candidate = torch.tanh(self.l_wj1j[L]*self.x + rt * g_l_acc)
+
             h_candidate = 1
             ht = (1-zt) * self.prev_h + zt * h_candidate
             self.next_hs.append(ht)
@@ -283,7 +293,7 @@ output_size = 100  # dimension of sparse vector x
 
 # model hyper parameters
 rnn_size = 200  # number of units in RNN cell
-num_layers = 2  # number of stacked RNN layers
+num_layers = 3  # number of stacked RNN layers
 num_unroll = 5  # number of RNN unrolled time steps
 
 # torch.set_num_threads(16)
