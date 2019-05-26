@@ -250,10 +250,10 @@ def AccM(label, pred_prob):
 
 gpu = 1  # gpu id
 
-if torch.cuda.is_available():
-    batch_size = 250  # 10# training batch size
-else:
-    batch_size = 5  # 600000  #
+# if torch.cuda.is_available():
+#     batch_size = 250  # 10# training batch size
+# else:
+batch_size = 5  # 600000  #
 lr = 0.002  # basic learning rate
 lr_decay_startpoint = 250  # learning rate from which epoch
 num_epochs = 400  # total training epochs
@@ -276,14 +276,14 @@ num_unroll = 5  # number of RNN unrolled time steps
 # manualSeed = torch.randint(1,10000,(1,))
 # print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-if torch.cuda.is_available():
-    train_size = 600000  #
-    valid_size = 100000  #
-else:
-    train_size = 100  # 600000  #
-    valid_size = 10  # 100000  #
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = "cpu"
+# if torch.cuda.is_available():
+#     train_size = 600000  #
+#     valid_size = 100000  #
+# else:
+train_size = 100  # 600000  #
+valid_size = 10  # 100000  #
 valid_data = torch.zeros(valid_size, input_size).to(device)
 valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
 batch_data = torch.zeros(batch_size, input_size).to(device)
@@ -297,10 +297,10 @@ err = 0
 
 model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_gru_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
-if torch.cuda.is_available():
-    logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
-else:
-    logger_file = "./" + logger_file
+# if torch.cuda.is_available():
+#     logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
+# else:
+logger_file = "./" + logger_file
 logger = open(logger_file, 'w')
 # for k,v in pairs(opt) do logger:write(k .. ' ' .. v ..'\n') end
 # logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
@@ -308,10 +308,10 @@ logger = open(logger_file, 'w')
 
 # torch.manual_seed(10)
 # mat_A = torch.rand(output_size,input_size)
-if torch.cuda.is_available():
-    mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
-else:
-    mat_A = torch.load("./mat_A.pt").to(device)
+# if torch.cuda.is_available():
+#     mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
+# else:
+mat_A = torch.load("./mat_A.pt").to(device)
 # mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
 
 
@@ -368,7 +368,8 @@ optimState = {'learningRate': 0.001, 'weigthDecay': 0.0000}
 
 net = GetGRUNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 # print(net)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = "cpu"
 net.to(device)
 # summary(net,[(num_layers,input_size),(num_layers,rnn_size * num_layers * 2)])
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
@@ -502,10 +503,10 @@ for epoch in range(epoch, num_epochs):
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
                   'loss': err.item()}
-    if torch.cuda.is_available():
-        torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
-    else:
-        torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    # if torch.cuda.is_available():
+    #     torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    # else:
+    #     torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     logger.close()
 
 
