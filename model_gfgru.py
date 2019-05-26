@@ -30,7 +30,7 @@ class BuildGFGRUStack(nn.Module):
         l_wj1j_lst = [nn.Linear(self.input_size, self.rnn_size)]
         # l_bn_lst = [nn.BatchNorm1d(2 * self.rnn_size)]
         # self.l_do = nn.Dropout(0.25)
-        l_wg_lst = [[nn.Linear(self.rnn_size, 1)] * self.num_layers] * self.num_layers
+        l_wg_lst = [[nn.Linear(self.rnn_size, 1)] * self.num_layers] * (self.num_layers-1)
         l_ug_lst = [[nn.Linear(self.num_layers * self.rnn_size, 1)] * self.num_layers] * self.num_layers
         l_wj1j_lst = [nn.Linear(self.rnn_size, self.rnn_size)] * self.num_layers
         for L in range(1, self.num_layers):
@@ -42,11 +42,11 @@ class BuildGFGRUStack(nn.Module):
         self.l_h2h = nn.ModuleList(l_h2h_lst)
         self.l_wj1j = nn.ModuleList(l_wj1j_lst)
         # self.l_bn = nn.ModuleList(l_bn_lst)
-        self.l_wg = []
-        self.l_ug = []
-        for L in range(0, self.num_layers):
+        self.l_wg = [nn.ModuleList([nn.Linear(self.input_size, 1)] * self.num_layers)]
+        self.l_ug = [nn.ModuleList(l_ug_lst[L])]
+        for L in range(0, self.num_layers-1):
             self.l_wg.append(nn.ModuleList(l_wg_lst[L]))
-            self.l_wg.append(nn.ModuleList(l_ug_lst[L]))
+            self.l_ug.append(nn.ModuleList(l_ug_lst[L]))
 
 
 
@@ -57,7 +57,7 @@ class BuildGFGRUStack(nn.Module):
         self.next_hs = []
         self.i2h = []
         self.h2h = []
-        self.g = torch.tensor([self.num_layers, self.num_layers])
+        self.g = torch.zeros(self.num_layers, self.num_layers, x.shape[0])
         # for gg in range(1, self.num_layers):
         h_stacked = prev_hs[0]
         for L in range(1,self.num_layers):
@@ -70,8 +70,8 @@ class BuildGFGRUStack(nn.Module):
             else:
                 self.x = self.next_hs[L - 1]
             for gg in range(self.num_layers):
-                g[L,gg] = torch.tanh(self.l_wg[L,gg](self.x) + self.l_ug[L,gg](h_staked))
-                g_l_acc = g_l_acc + g[L,gg]*self.l_uij[L,gg](prev_hs[gg])
+                self.g[L,gg] = torch.squeeze(torch.tanh(self.l_wg[L][gg](self.x) + self.l_ug[L][gg](h_stacked)))
+                g_l_acc = g_l_acc + self.g[L,gg]*self.l_uij[L][gg](prev_hs[gg])
             self.i2h.append((self.l_i2h[L](self.x)))
             self.h2h.append((self.l_h2h[L](self.prev_h)))
             Wx1, Wx2 = self.i2h[L].chunk(2, dim=1) # it should return 4 tensors self.rnn_size
