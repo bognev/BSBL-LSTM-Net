@@ -32,7 +32,7 @@ class BuildGFGRUStack(nn.Module):
         # self.l_do = nn.Dropout(0.25)
         l_wg_lst = [[nn.Linear(self.rnn_size, 1)] * self.num_layers] * (self.num_layers-1)
         l_ug_lst = [[nn.Linear(self.num_layers * self.rnn_size, 1)] * self.num_layers] * self.num_layers
-        l_wj1j_lst = [nn.Linear(self.input_size, self.rnn_size)] * self.num_layers
+        l_wj1j_lst = [nn.Linear(self.input_size, self.rnn_size)]
         l_uij_lst = [nn.Linear(self.rnn_size, self.rnn_size)]
         for L in range(1, self.num_layers):
             l_i2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
@@ -84,8 +84,6 @@ class BuildGFGRUStack(nn.Module):
             zt = torch.sigmoid(Wx1 + Uh1)
             rt = torch.sigmoid(Wx2 + Uh2)
             h_candidate = torch.tanh(self.l_wj1j[L](self.x) + rt * g_l_acc)
-
-            h_candidate = 1
             ht = (1-zt) * self.prev_h + zt * h_candidate
             self.next_hs.append(ht)
         return torch.stack(self.next_hs)
