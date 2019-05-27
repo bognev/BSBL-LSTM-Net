@@ -294,10 +294,10 @@ def AccM(label, pred_prob):
 
 gpu = 1  # gpu id
 
-# if torch.cuda.is_available():
-#     batch_size = 250  # 10# training batch size
-# else:
-batch_size = 5  # 600000  #
+if torch.cuda.is_available() and HOME == 0:
+    batch_size = 250  # 10# training batch size
+else:
+    batch_size = 5  # 600000  #
 lr = 0.002  # basic learning rate
 lr_decay_startpoint = 250  # learning rate from which epoch
 num_epochs = 400  # total training epochs
@@ -339,7 +339,7 @@ batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size).to(device)  #
 
 err = 0
 
-model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_gru_' + str(rnn_size)
+model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_gfgru_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
 if torch.cuda.is_available() and HOME == 0:
      logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
