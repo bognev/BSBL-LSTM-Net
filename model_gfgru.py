@@ -9,10 +9,10 @@ import torch.optim as optim
 # from graphviz import Source
 
 import time
-
-# from google.colab import drive
-# 
-# drive.mount("/content/gdrive", force_remount=True)
+HOME = 0
+if torch.cuda.is_available() and HOME == 0:
+    from google.colab import drive
+    drive.mount("/content/gdrive", force_remount=True)
 
 
 
@@ -35,7 +35,7 @@ class BuildGFGRUStack(nn.Module):
 
         for L in range(1, self.num_layers):
             l_i2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
-            l_h2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
+            # l_h2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
             l_wj1j_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
             # l_uij_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
             # l_bn_lst.append(nn.BatchNorm1d(2 * self.rnn_size))
@@ -55,12 +55,15 @@ class BuildGFGRUStack(nn.Module):
             self.l_ug.append(nn.ModuleList(l_ug_lst[L]))
             self.l_uij.append(nn.ModuleList(l_uij_lst[L]))
 
+        self.l_wg = nn.ModuleList(self.l_wg)
+        self.l_ug = nn.ModuleList(self.l_ug)
+        self.l_uij = nn.ModuleList(self.l_uij)
 
 
 
     def forward(self, x, prev_hs):
-        self.g = torch.zeros(self.num_layers, self.num_layers, x.shape[0], 1)
-        self.g_l_acc = torch.zeros(self.num_layers, x.shape[0], self.rnn_size)
+        self.g = [[0 for x in range(self.num_layers)] for y in range(self.num_layers)]  # torch.zeros(x.shape[0], 1)
+        self.g_l_acc = [0 for x in range(self.num_layers)]  # torch.zeros(x.shape[0], self.rnn_size)
         self.x_size = []
         self.prev_h = 0
         self.next_hs = []
@@ -76,17 +79,22 @@ class BuildGFGRUStack(nn.Module):
             else:
                 self.x = self.next_hs[L - 1]
             self.prev_h = prev_hs[L]
-            for gg in range(self.num_layers):
-                self.g[L,gg] = torch.tanh(self.l_wg[L][gg](self.x) + self.l_ug[L][gg](self.h_stacked))
-            for gg in range(self.num_layers):
-                self.g_l_acc[L] = self.g_l_acc[L] + \
-                                  self.g[L,gg].expand(self.x.shape[0],self.rnn_size)*self.l_uij[L][gg](prev_hs[gg])
-            self.i2h.append((self.l_i2h[L](self.x)))
-            self.h2h.append((self.l_h2h[L](self.prev_h)))
-            Wx1, Wx2 = self.i2h[L].chunk(2, dim=1) # it should return 4 tensors self.rnn_size
+
+            self.i2h.append(self.l_i2h[L](self.x))
+            self.h2h.append(self.l_h2h[L](self.prev_h))
+            Wx1, Wx2 = self.i2h[L].chunk(2, dim=1)  # it should return 4 tensors self.rnn_size
             Uh1, Uh2 = self.h2h[L].chunk(2, dim=1)
             zt = torch.sigmoid(Wx1 + Uh1)
             rt = torch.sigmoid(Wx2 + Uh2)
+
+            for gg in range(self.num_layers):
+                # self.g[L,gg] = torch.tanh(self.l_wg[L][gg](self.x) + self.l_ug[L][gg](self.h_stacked))
+                self.g[L][gg] =(torch.tanh(self.l_wg[L][gg](self.x) + self.l_ug[L][gg](self.h_stacked)))
+            for gg in range(self.num_layers):
+                self.g_l_acc[L] = self.g_l_acc[L] + \
+                                   self.g[L][gg].expand(self.x.shape[0],self.rnn_size)*self.l_uij[L][gg](prev_hs[gg])
+
+
             h_candidate = torch.tanh(self.l_wj1j[L](self.x) + rt * self.g_l_acc[L])
             ht = (1-zt) * self.prev_h + zt * h_candidate
             self.next_hs.append(ht)
@@ -218,6 +226,11 @@ z = torch.zeros(3, rnn_size * num_layers * 2)
 #
 # s = Source(temp, filename="test.gv", format="png")
 # s.view()
+if HOME == 0:
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+else:
+    device = "cpu"
+
 
 class MultiClassNLLCriterion(torch.nn.Module):
 
@@ -307,15 +320,14 @@ num_unroll = 5  # number of RNN unrolled time steps
 # manualSeed = torch.randint(1,10000,(1,))
 # print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
-# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = "cpu"
 
-# if torch.cuda.is_available():
-#     train_size = 600000  #
-#     valid_size = 100000  #
-# else:
-train_size = 100  # 600000  #
-valid_size = 10  # 100000  #
+
+if torch.cuda.is_available() and HOME == 0:
+    train_size = 600000  #
+    valid_size = 100000  #
+else:
+    train_size = 100  # 600000  #
+    valid_size = 10  # 100000  #
 valid_data = torch.zeros(valid_size, input_size).to(device)
 valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
 batch_data = torch.zeros(batch_size, input_size).to(device)
@@ -329,10 +341,10 @@ err = 0
 
 model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_gru_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
-# if torch.cuda.is_available():
-#     logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
-# else:
-logger_file = "./" + logger_file
+if torch.cuda.is_available() and HOME == 0:
+     logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
+else:
+    logger_file = "./" + logger_file
 logger = open(logger_file, 'w')
 # for k,v in pairs(opt) do logger:write(k .. ' ' .. v ..'\n') end
 # logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
@@ -340,10 +352,10 @@ logger = open(logger_file, 'w')
 
 # torch.manual_seed(10)
 # mat_A = torch.rand(output_size,input_size)
-# if torch.cuda.is_available():
-#     mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
-# else:
-mat_A = torch.load("./mat_A.pt").to(device)
+if torch.cuda.is_available() and HOME == 0:
+    mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
+else:
+    mat_A = torch.load("./mat_A.pt").to(device)
 # mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
 
 
@@ -401,7 +413,7 @@ optimState = {'learningRate': 0.001, 'weigthDecay': 0.0000}
 net = GetGFGRUNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 # print(net)
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-device = "cpu"
+
 net.to(device)
 # summary(net,[(num_layers,input_size),(num_layers,rnn_size * num_layers * 2)])
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
@@ -535,10 +547,10 @@ for epoch in range(epoch, num_epochs):
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
                   'loss': err.item()}
-    # if torch.cuda.is_available():
-    #     torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
-    # else:
-    torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    if torch.cuda.is_available() and HOME == 0:
+        torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    else:
+        torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     logger.close()
 
 
