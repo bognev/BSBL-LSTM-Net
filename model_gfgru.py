@@ -30,60 +30,64 @@ class BuildGFGRUStack(nn.Module):
         l_wj1j_lst = [nn.Linear(self.input_size, self.rnn_size)]
         # l_bn_lst = [nn.BatchNorm1d(2 * self.rnn_size)]
         # self.l_do = nn.Dropout(0.25)
-        l_wg_lst = [[nn.Linear(self.rnn_size, 1)] * self.num_layers] * (self.num_layers-1)
-        l_ug_lst = [[nn.Linear(self.num_layers * self.rnn_size, 1)] * self.num_layers] * self.num_layers
+
         l_wj1j_lst = [nn.Linear(self.input_size, self.rnn_size)]
-        l_uij_lst = [nn.Linear(self.rnn_size, self.rnn_size)]
+
         for L in range(1, self.num_layers):
             l_i2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
             l_h2h_lst.append(nn.Linear(self.rnn_size, 2 * self.rnn_size))
             l_wj1j_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
-            l_uij_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
+            # l_uij_lst.append(nn.Linear(self.rnn_size, self.rnn_size))
             # l_bn_lst.append(nn.BatchNorm1d(2 * self.rnn_size))
         self.l_i2h = nn.ModuleList(l_i2h_lst)
         self.l_h2h = nn.ModuleList(l_h2h_lst)
         self.l_wj1j = nn.ModuleList(l_wj1j_lst)
         # self.l_bn = nn.ModuleList(l_bn_lst)
+        l_wg_lst = [[nn.Linear(self.rnn_size, 1)] * self.num_layers] * (self.num_layers - 1)
+        l_ug_lst = [[nn.Linear(self.num_layers * self.rnn_size, 1)] * self.num_layers] * self.num_layers
+        l_uij_lst = [[nn.Linear(self.rnn_size, self.rnn_size)] * self.num_layers] * self.num_layers
         self.l_wg = [nn.ModuleList([nn.Linear(self.input_size, 1)] * self.num_layers)]
-        self.l_ug = [nn.ModuleList(l_ug_lst[L])]
-        self.l_uij = nn.ModuleList(l_uij_lst)
+        self.l_ug = [nn.ModuleList(l_ug_lst[0])]
+        self.l_uij = [nn.ModuleList(l_uij_lst[0])]
 
         for L in range(0, self.num_layers-1):
             self.l_wg.append(nn.ModuleList(l_wg_lst[L]))
             self.l_ug.append(nn.ModuleList(l_ug_lst[L]))
+            self.l_uij.append(nn.ModuleList(l_uij_lst[L]))
 
 
 
 
     def forward(self, x, prev_hs):
+        self.g = torch.zeros(self.num_layers, self.num_layers, x.shape[0], 1)
+        self.g_l_acc = torch.zeros(self.num_layers, x.shape[0], self.rnn_size)
         self.x_size = []
         self.prev_h = 0
         self.next_hs = []
         self.i2h = []
         self.h2h = []
-        self.g = torch.zeros(x.shape[0], self.num_layers, self.num_layers)
         # for gg in range(1, self.num_layers):
-        h_stacked = prev_hs[0]
+        self.h_stacked = prev_hs[0]
         for L in range(1,self.num_layers):
-            h_stacked = torch.cat((h_stacked, prev_hs[L]),1)
+            self.h_stacked = torch.cat((self.h_stacked, prev_hs[L]),1)
         for L in range(self.num_layers):
-            self.prev_h = prev_hs[L]
-            g_l_acc = torch.zeros(x.shape[0],self.rnn_size)
             if L == 0:
                 self.x = x
             else:
                 self.x = self.next_hs[L - 1]
+            self.prev_h = prev_hs[L]
             for gg in range(self.num_layers):
-                self.g[:,L,gg] = torch.squeeze(torch.tanh(self.l_wg[L][gg](self.x) + self.l_ug[L][gg](h_stacked)))
-                for bs in range(self.x.shape[0]):
-                    g_l_acc[bs] = g_l_acc[bs] + self.g[bs,L,gg]*self.l_uij[L](prev_hs[:,bs,:][gg])
+                self.g[L,gg] = torch.tanh(self.l_wg[L][gg](self.x) + self.l_ug[L][gg](self.h_stacked))
+            for gg in range(self.num_layers):
+                self.g_l_acc[L] = self.g_l_acc[L] + \
+                                  self.g[L,gg].expand(self.x.shape[0],self.rnn_size)*self.l_uij[L][gg](prev_hs[gg])
             self.i2h.append((self.l_i2h[L](self.x)))
             self.h2h.append((self.l_h2h[L](self.prev_h)))
             Wx1, Wx2 = self.i2h[L].chunk(2, dim=1) # it should return 4 tensors self.rnn_size
             Uh1, Uh2 = self.h2h[L].chunk(2, dim=1)
             zt = torch.sigmoid(Wx1 + Uh1)
             rt = torch.sigmoid(Wx2 + Uh2)
-            h_candidate = torch.tanh(self.l_wj1j[L](self.x) + rt * g_l_acc)
+            h_candidate = torch.tanh(self.l_wj1j[L](self.x) + rt * self.g_l_acc[L])
             ht = (1-zt) * self.prev_h + zt * h_candidate
             self.next_hs.append(ht)
         return torch.stack(self.next_hs)
