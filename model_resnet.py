@@ -22,7 +22,6 @@ class BuildResNetStack(nn.Module):
     def __init__(self, input_size):
         super(BuildResNetStack, self).__init__()
         self.input_size = input_size
-        self.rnn_size = rnn_size
         self.fc_in = nn.Linear(self.input_size,self.input_size)
         self.bn = nn.BatchNorm1d(self.input_size)
         self.fc_out = nn.Linear(self.input_size,self.input_size)
@@ -66,9 +65,9 @@ class BuildResNetUnrollNet(nn.Module):
         self.fc_size = fc_size
         self.input_size = input_size
         self.buildResNetstack_lst_in = [BuildResNetStack(self.input_size)] * self.num_unroll
-        self.l_ResNets_imd = BuildResNetStackInterm(self.input_size, self.fc_size)
         self.buildResNetstack_lst_out = [BuildResNetStack(self.fc_size)] * self.num_unroll
         self.l_ResNets_in = nn.ModuleList(self.buildResNetstack_lst_in)
+        self.l_ResNets_imd = BuildResNetStackInterm(self.input_size, self.fc_size)
         self.l_ResNets_out = nn.ModuleList(self.buildResNetstack_lst_out)
 
     def forward(self, x):
@@ -245,7 +244,7 @@ output_size = 100  # dimension of sparse vector x
 # model hyper parameters
 rnn_size = 200  # number of units in RNN cell
 num_layers = 3  # number of stacked RNN layers
-num_unroll = 5  # number of RNN unrolled time steps
+num_unroll = 4  # number of RNN unrolled time steps
 
 # torch.set_num_threads(16)
 # manualSeed = torch.randint(1,10000,(1,))
@@ -353,9 +352,8 @@ net.to(device)
 # optimizer = optim.RMSprop(params=net.parameters(), lr=0.001, alpha=0.9, eps=1e-04, weight_decay=0.0001, momentum=0, centered=False)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
-optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'], \
-                          alpha=0.99, eps=1e-05, weight_decay=optimState['weigthDecay'], momentum=0.0, centered=False)
-
+optimizer = optim.SGD(params=net.parameters(), lr=optimState['learningRate'], \
+                          momentum=0.5, dampening=0, weight_decay=optimState['weigthDecay'], nesterov=False)
 # checkpoint = torch.load( "/content/gdrive/My Drive/model_l_2t_17_rnn_800_3.pth")
 # net.load_state_dict(checkpoint['model_state_dict'])
 # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
