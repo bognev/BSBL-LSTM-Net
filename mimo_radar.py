@@ -15,13 +15,13 @@ DB=10.**(0.1*SNR_dB)
 N=8 #the number of receivers
 M=3 #the number of transmitters
 
-K=2 #the number of targets
+K=1 #the number of targets
 # np.random.seed(15)
 #Position of receivers
-x_r=np.array([1000,2000,2500,2500,2000,1000,500,500]+500*(np.random.rand(N)-0.5))#\
+x_r=np.array([1000,2000,2500,2500,2000,1000,500,500])#+500*(np.random.rand(N)-0.5))#\
     # 1500,3000,500,2500,1000,1500,500,3000,\
     # 2500,3500,1000,3500,2000,4000,3000,3000]+500*(np.random.rand(N)-0.5))
-y_r=np.array([500,500,1000,2000,2500,2500,2000,1500]+500*(np.random.rand(N)-0.5))#\
+y_r=np.array([500,500,1000,2000,2500,2500,2000,1500])#+500*(np.random.rand(N)-0.5))#\
      # 3500,3500,500,4000,4000,2500,3000,500,\
      # 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
 
@@ -29,12 +29,8 @@ y_r=np.array([500,500,1000,2000,2500,2500,2000,1500]+500*(np.random.rand(N)-0.5)
 x_t=np.array([0,4000,4000,0,1500,0,4000,2000])
 y_t=np.array([0,0,4000,4000,4000,1500,1500,0])
 
-
-
-NOISE = 0  #on/off noise
-H = 0      #on/off êîýôôèöèåíòû îòðàæåíèÿ
-P = 6 #consensus iterations
-Nit = 1
+NOISE = 1  #on/off noise
+H = 1      #on/off êîýôôèöèåíòû îòðàæåíèÿ
 rk = np.zeros([K,M,N]);
 tk = np.zeros([K,M,N]);
 tau = np.zeros([K,M,N]);
@@ -64,7 +60,6 @@ for kk in range(K):
     x_k[kk]=grid_all_points[k_random_grid_points.item(kk)][0]
     y_k[kk]=grid_all_points[k_random_grid_points.item(kk)][1]
 r[k_random_grid_points] = 1
-
 
 #Time delays
 for k in range(K):
@@ -117,7 +112,7 @@ for n in range(1,N):
     x_flat = np.concatenate([x_flat,x[n,:].transpose()],axis=0)
 
 
-dictionary_coe=(np.zeros([M,N,T,size_grid_x,size_grid_y])+ \
+dictionary=(np.zeros([M,N,T,size_grid_x,size_grid_y])+ \
     1j*np.zeros([M,N,T,size_grid_x,size_grid_y]))/np.sqrt(2);
 
 ll = [];
@@ -127,19 +122,21 @@ for xx in np.arange(size_grid_x):
         for m in np.arange(M):
             for n in np.arange(N):
                 l=np.floor(tau_grid_c[xx,yy,n,m]/dt)
-                dictionary_coe[m,n,np.arange(l,l+L,dtype = np.integer),xx,yy] = s[m,:].transpose()*\
-                                                                                h[k,m,n]*\
+                dictionary[m,n,np.arange(l,l+L,dtype = np.integer),xx,yy] = s[m,:].transpose()*\
                                                                                 np.sqrt(200000000000)*\
                                                                                 (1/tk[k,m,n])*(1/rk[k,m,n])
 
-D_flat_coe = np.zeros([N*T,N*size_grid_x*size_grid_y*M]) + 1j*np.zeros([N*T,N*size_grid_x*size_grid_y*M])
+D_flat = np.zeros([N*T,N*size_grid_x*size_grid_y*M]) + 1j*np.zeros([N*T,N*size_grid_x*size_grid_y*M])
 i=0
 for m in range(M):
     for n in range(N):
         for xx in range(size_grid_x):
             for yy in range(size_grid_y):
-                D_flat_coe[range(n*T,(n+1)*T),i]= np.squeeze(dictionary_coe[m,n,range(T),xx,yy])
+                D_flat[range(n*T,(n+1)*T),i]= np.squeeze(dictionary[m,n,range(T),xx,yy])
                 i += 1
+from gen_mimo_samples import gen_mimo_samples
+y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
+print(label)
 
 #group lasso
 lambdas = cp.Parameter(nonneg=True)
@@ -154,13 +151,14 @@ a = []
 for ii in range(size_grid_x*size_grid_y):
     a.append(cp.norm(x[range(ii,size_grid_x*size_grid_y*M*N,size_grid_x*size_grid_y)],2))
 
-constr = [cp.norm(x_flat-D_flat_coe@x,2) <= p, sum(a) <= q]
+constr = [cp.norm(y-D_flat@x,2) <= p, sum(a) <= q]
 prob = cp.Problem(cp.Minimize(objective), constr)
 prob.solve()
 
 plt.figure(2)
 plt.subplot(211)
-plt.plot(np.abs(r_glob), lw=2)
+plt.plot(np.abs(rr_glob), lw=2)
+plt.grid(True)
 plt.subplot(212)
 plt.plot(np.abs(x.value), lw=2)
 plt.grid(True)
