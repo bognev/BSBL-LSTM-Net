@@ -2,6 +2,7 @@ import torch
 import torchvision
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 # from mat4py import loadmat
 # #from torchsummary import summary
 # from graphviz import Digraph
@@ -261,16 +262,17 @@ lr_decay_startpoint = 250  # learning rate from which epoch
 num_epochs = 400  # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
-N = 4  # the number of receivers
+N = 3  # the number of receivers
 M = 3  # the number of transmitters
-K = 2  # the number of targets
+K = 3  # the number of targets
 
 # task related parameters
 # task: y = Ax, given A recovery sparse x from y
 dataset = 'uniform'  # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), unit (+-1)
-num_nonz = K*N*M*2  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
+# num_nonz = K*N*M*2  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
+num_nonz = K  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
 input_size = N*2*400  # dimension of observation vector y
-output_size = N*M*6*6*2  # dimension of sparse vector x
+output_size = 12*12  # dimension of sparse vector x
 
 # model hyper parameters
 rnn_size = 200  # number of units in RNN cell
@@ -320,8 +322,6 @@ logger = open(logger_file, 'w')
 
 
 def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
-    import numpy as np
-
     c = 3 * 10 ** 8
     dt = 10 ** (-7)
     Ts = 1.6000e-06
@@ -335,16 +335,16 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     # K = 1  # the number of targets
     # np.random.seed(15)
     # Position of receivers
-    x_r = np.array([1000, 2000, 2500, 2500, 2000, 1000, 500, 500])# + 500 * (np.random.rand(N) - 0.5))  # \
+    x_r = np.array([1000, 2000, 2500, 2500, 2000, 1000, 500, 500])+500*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
     # 1500,3000,500,2500,1000,1500,500,3000,\
     # 2500,3500,1000,3500,2000,4000,3000,3000]+500*(np.random.rand(N)-0.5))
-    y_r = np.array([500, 500, 1000, 2000, 2500, 2500, 2000, 1500])# + 500 * (np.random.rand(N) - 0.5))  # \
+    y_r = np.array([500, 500, 1000, 2000, 2500, 2500, 2000, 1500])+500*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
     # 3500,3500,500,4000,4000,2500,3000,500,\
     # 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
 
     # Position of transmitters
-    x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000])
-    y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0])
+    x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000])+500*np.random.rand(1)
+    y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0])+500*np.random.rand(1)
 
     # NOISE = 1  # on/off noise
     # H = 1  # on/off êîýôôèöèåíòû îòðàæåíèÿ
@@ -360,9 +360,13 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     for m in range(M):
         s[m] = np.exp(1j * 2 * np.pi * (m) * np.arange(L) / M) / np.sqrt(L);
         # sqrt(0.5)*(randn(1,L)+1i*randn(1,L))/sqrt(L);
-    Ls = 875
-    Le = Ls + 125 * 6
-    dx = 125
+#     Ls = 875
+#     Le = Ls + 125 * 6
+#     dx = 125
+    Ls = 0
+    Le = Ls + 250 * 12
+    dx = 250
+    dy = dx
     dy = dx
     x_grid = np.arange(Ls, Le, dx)
     y_grid = np.arange(Ls, Le, dy)
@@ -422,15 +426,19 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     return x_flat, r, r_glob, k_random_grid_points
 
 def gen_batch(batch_size, num_nonz, N, M, K):
-    SNR_dB = torch.randint(10,30,(1,)).item()
     NOISE = 1
     H = 1
+    SNR_dB = torch.randint(10,30,(1,)).item()
     y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
     batch_data = torch.zeros(batch_size, 2*y.shape[0]).to(device)
-    batch_label = torch.zeros(batch_size, 2*label.shape[0]).to(device)
+#     batch_label = torch.zeros(batch_size, 2*label.shape[0]).to(device)
+    batch_label = torch.zeros(batch_size, label[range(num_nonz)].shape[0]).to(device)
     for i in range(batch_size):
+#         SNR_dB = torch.randint(10,30,(1,)).item()
+        y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
         batch_data[i] = torch.cat([torch.from_numpy(y.real),torch.from_numpy(y.imag)]).to(device)
-        batch_label[i] = torch.cat([torch.from_numpy(label.real),torch.from_numpy(label.imag)]).to(device)
+#         batch_label[i] = torch.cat([torch.from_numpy(label),torch.from_numpy(label+M*N*36)]).to(device)
+        batch_label[i] = torch.cat([torch.from_numpy(label[range(num_nonz)])]).to(device)
 
 
     return batch_label.type(torch.LongTensor).to(device), batch_data
@@ -518,7 +526,7 @@ for epoch in range(epoch, num_epochs):
         train_accm = train_accm + batch_accm
         train_err = train_err + err.item()
         nbatch = nbatch + 1
-        if (nbatch) % 512 == 1:
+        if (nbatch) % 255 == 1:
             print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(batch_accs,
                                                                                                              batch_accl,
                                                                                                              batch_accm,

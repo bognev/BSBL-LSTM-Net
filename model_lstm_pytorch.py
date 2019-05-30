@@ -366,12 +366,12 @@ LOSS = MultiClassNLLCriterion()
 optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'],\
                           alpha=0.99, eps=1e-05, weight_decay=optimState['weigthDecay'], momentum=0.1, centered=False)
 
-checkpoint = torch.load( "./checkpoints/model_l_2t_11_rnn_425_3.pth")
-net.load_state_dict(checkpoint['model_state_dict'])
-optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-epoch = checkpoint['epoch'] + 1
-loss = checkpoint['loss']
-# epoch=0
+# checkpoint = torch.load( "./checkpoints/model_l_2t_11_rnn_425_3.pth")
+# net.load_state_dict(checkpoint['model_state_dict'])
+# optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+# epoch = checkpoint['epoch'] + 1
+# loss = checkpoint['loss']
+epoch=0
 
 for epoch in range(epoch,num_epochs):
     mat_A = torch.rand(output_size, input_size)
@@ -474,7 +474,7 @@ for epoch in range(epoch,num_epochs):
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
                   'loss': err.item()}
-    torch.save(checkpoint, "./checkpoints/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     logger.close()
     # if epoch == lr_decay_startpoint:
     #     optimState["learningRate"] = 0.001
