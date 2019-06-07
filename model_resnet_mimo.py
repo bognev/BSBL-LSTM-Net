@@ -33,8 +33,7 @@ class BuildResNetStack(nn.Module):
         self.fc_in_x = self.fc_in(self.x)
         self.bn_x = self.bn(self.fc_in_x)
         self.relu_x = self.relu(self.bn_x)
-        self.fc_out_x = self.fc_out(self.relu_x)
-        self.skip = self.x + self.fc_out_x
+        self.skip = self.x + self.fc_out(self.relu_x)
         self.relu_skip = self.relu(self.skip)
         return self.relu_skip
 
@@ -54,8 +53,7 @@ class BuildResNetStackInterm(nn.Module):
         self.fc_in_x = self.fc_in(self.x)
         self.bn_x = self.bn(self.fc_in_x)
         self.relu_x = self.relu(self.bn_x)
-        self.fc_out_x = self.fc_out[0](self.relu_x)
-        self.skip = self.fc_out[1](self.x) + self.fc_out_x
+        self.skip = self.fc_out[1](self.x) + self.fc_out[0](self.relu_x)
         self.relu_skip = self.relu(self.skip)
         return self.relu_skip
 
