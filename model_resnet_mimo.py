@@ -5,9 +5,9 @@ import torch.optim as optim
 import numpy as np
 # from mat4py import loadmat
 # #from torchsummary import summary
-# from graphviz import Digraph
-# from torchviz import make_dot
-# from graphviz import Source
+from graphviz import Digraph
+from torchviz import make_dot
+from graphviz import Source
 
 import time
 HOME = 0
@@ -18,136 +18,119 @@ if torch.cuda.is_available() and HOME == 0:
 
 
 
-class BuildGRUStack(nn.Module):
+class BuildResNetStack(nn.Module):
 
-    def __init__(self, input_size, rnn_size, num_layers):
-        super(BuildGRUStack, self).__init__()
-
+    def __init__(self, input_size):
+        super(BuildResNetStack, self).__init__()
         self.input_size = input_size
-        self.rnn_size = rnn_size
-        self.num_layers = num_layers
-        l_i2h_lst = [nn.Linear(self.input_size, 3 * self.rnn_size)]
-        l_h2h_lst = [nn.Linear(self.rnn_size, 3 * self.rnn_size)]
-#         l_bn_lst = [nn.BatchNorm1d(3 * self.rnn_size)]
-#         self.l_do = nn.Dropout(0.25)
-        for L in range(1, self.num_layers):
-            l_i2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
-            l_h2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
-#             l_bn_lst.append(nn.BatchNorm1d(3 * self.rnn_size))
-        self.l_i2h = nn.ModuleList(l_i2h_lst)
-        self.l_h2h = nn.ModuleList(l_h2h_lst)
-#         self.l_bn = nn.ModuleList(l_bn_lst)
+        self.fc_in = nn.Linear(self.input_size,self.input_size)
+        self.bn = nn.BatchNorm1d(self.input_size)
+        self.relu = nn.ReLU()
+        self.fc_out = nn.Linear(self.input_size,self.input_size)
+
+    def forward(self, x):
+        self.x = x
+        self.fc_in_x = self.fc_in(self.x)
+        self.bn_x = self.bn(self.fc_in_x)
+        self.relu_x = self.relu(self.bn_x)
+        self.fc_out_x = self.fc_out(self.relu_x)
+        self.skip = self.x + self.fc_out_x
+        self.relu_skip = self.relu(self.skip)
+        return self.relu_skip
+
+class BuildResNetStackInterm(nn.Module):
+
+    def __init__(self, input_size, fc_size):
+        super(BuildResNetStackInterm, self).__init__()
+        self.input_size = input_size
+        self.fc_size = fc_size
+        self.fc_in = nn.Linear(self.input_size,self.input_size)
+        self.bn = nn.BatchNorm1d(self.input_size)
+        self.relu = nn.ReLU()
+        self.fc_out = nn.ModuleList([nn.Linear(self.input_size,self.fc_size), nn.Linear(self.input_size,self.fc_size)])
+
+    def forward(self, x):
+        self.x = x
+        self.fc_in_x = self.fc_in(self.x)
+        self.bn_x = self.bn(self.fc_in_x)
+        self.relu_x = self.relu(self.bn_x)
+        self.fc_out_x = self.fc_out[0](self.relu_x)
+        self.skip = self.fc_out[1](self.x) + self.fc_out_x
+        self.relu_skip = self.relu(self.skip)
+        return self.relu_skip
 
 
-    def forward(self, x, prev_hs):
-        self.x_size = []
-        self.prev_h = 0
-        self.next_hs = []
-        self.i2h = []
-        self.h2h = []
-        for L in range(self.num_layers):
-            self.prev_h = prev_hs[L]
-            if L == 0:
-                self.x = x
-            else:
-                self.x = self.next_hs[L - 1]
-#             self.i2h.append(self.l_do(self.l_bn[L](self.l_i2h[L](self.x))))
-#             self.h2h.append(self.l_do(self.l_bn[L](self.l_h2h[L](self.prev_h))))
-            self.i2h.append(self.l_i2h[L](self.x))
-            self.h2h.append(self.l_h2h[L](self.prev_h))
-            Wx1, Wx2, Wx3 = self.i2h[L].chunk(3, dim=1) # it should return 4 tensors self.rnn_size
-            Uh1, Uh2, Uh3 = self.h2h[L].chunk(3, dim=1)
-            zt = torch.sigmoid(Wx1 + Uh1)
-            rt = torch.sigmoid(Wx2 + Uh2)
-            h_candidate = torch.tanh(Wx3 + rt * Uh3)
-            ht = (1-zt) * self.prev_h + zt * h_candidate
-            self.next_hs.append(ht)
-        return torch.stack(self.next_hs)
+class BuildResNetUnrollNet(nn.Module):
 
-
-class BuildGRUUnrollNet(nn.Module):
-
-    def __init__(self, num_unroll, num_layers, rnn_size, input_size):
-        super(BuildGRUUnrollNet, self).__init__()
+    def __init__(self, num_unroll, input_size, fc_size):
+        super(BuildResNetUnrollNet, self).__init__()
         self.num_unroll = num_unroll
-        self.num_layers = num_layers
-        self.rnn_size = rnn_size
+        self.fc_size = fc_size
         self.input_size = input_size
-        self.outputs = []
-        self.output = []
-        self.now_h = []
-        self.buildGRUstack_lst = []
-        for i in range(0, self.num_unroll):
-            self.buildGRUstack_lst.append(BuildGRUStack(self.input_size, self.rnn_size, self.num_layers))
-        self.buildGRUstack = nn.ModuleList(self.buildGRUstack_lst)
+        self.buildResNetstack_lst_in = [BuildResNetStack(self.input_size)] * self.num_unroll
+        self.buildResNetstack_lst_out = [BuildResNetStack(self.fc_size)] * self.num_unroll
+        self.l_ResNets_in = nn.ModuleList(self.buildResNetstack_lst_in)
+        self.l_ResNets_imd = BuildResNetStackInterm(self.input_size, self.fc_size)
+        self.l_ResNets_out = nn.ModuleList(self.buildResNetstack_lst_out)
 
-    def forward(self, x, init_states_input):
+    def forward(self, x):
+        self.x = x
+        # self.res_in = [self.l_ResNets_in[0](self.x)]
+        self.x = self.l_ResNets_in[0](self.x)
+        self.x = self.l_ResNets_in[1](self.x)
+        self.x = self.l_ResNets_in[2](self.x)
+        # for L in range(0, self.num_unroll-1):
+        #     self.res_in.append(self.l_ResNets_in[L+1](self.res_in[L]))
+        # self.res_int = self.l_ResNets_imd(self.res_in[-1])
+        self.res_int = self.l_ResNets_imd(self.x)
+        self.res_out = self.l_ResNets_out[0](self.res_int)
+        self.res_out = self.l_ResNets_out[1](self.res_out)
+        self.res_out = self.l_ResNets_out[2](self.res_out)
+        # self.res_out = [self.l_ResNets_out[0](self.res_int)]
+        # for L in range(0, self.num_unroll-1):
+        #     self.res_out.append(self.l_ResNets_out[L+1](self.res_out[L]))
 
-        self.init_hs = []
-        self.now_hs = []
-        self.outputs = []
-
-        init_states = init_states_input.reshape((init_states_input.size(0), self.num_layers * 2, self.rnn_size))
-        init_states_lst = list(init_states.chunk(self.num_layers * 2, 1))
-
-        for i in range(self.num_layers):
-            self.init_hs.append(init_states_lst[2 * i].reshape(init_states_input.size(0), self.rnn_size))
-
-        self.now_hs.append(torch.stack(self.init_hs))
-
-        for i in range(self.num_unroll):
-            self.now_h = self.buildGRUstack[i](x, self.now_hs[i])
-            self.now_hs.append(self.now_h)
-            self.outputs.append(self.now_hs[i + 1][-1])
-            # for L in range(self.num_layers):
-            #     setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
-            #     setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
-        for i in range(1, self.num_unroll):
-            for j in range(self.num_layers):
-                self.buildGRUstack[i].l_i2h[j].weight.data = self.buildGRUstack[0].l_i2h[j].weight.data
-                self.buildGRUstack[i].l_h2h[j].weight.data = self.buildGRUstack[0].l_h2h[j].weight.data
-                self.buildGRUstack[i].l_i2h[j].bias.data = self.buildGRUstack[0].l_i2h[j].bias.data
-                self.buildGRUstack[i].l_h2h[j].bias.data = self.buildGRUstack[0].l_h2h[j].bias.data
-                self.buildGRUstack[i].l_i2h[j].weight.grad = self.buildGRUstack[0].l_i2h[j].weight.grad
-                self.buildGRUstack[i].l_h2h[j].weight.grad = self.buildGRUstack[0].l_h2h[j].weight.grad
-                self.buildGRUstack[i].l_i2h[j].bias.grad = self.buildGRUstack[0].l_i2h[j].bias.grad
-                self.buildGRUstack[i].l_h2h[j].bias.grad = self.buildGRUstack[0].l_h2h[j].bias.grad
-        self.output = self.outputs[0]
-        for i in range(1, self.num_unroll):
-            self.output = torch.cat((self.output, self.outputs[i]), 1)
-
-        return self.output
+        return self.res_out
+        # return self.res_out[-1]
 
 
-class GetGRUNet(nn.Module):
+class GetResNet(nn.Module):
 
-    def __init__(self, num_unroll, num_layers, rnn_size, output_size, input_size):
-        super(GetGRUNet, self).__init__()
-        self.num_unroll, self.num_layers, self.rnn_size, self.output_size, self.input_size = num_unroll, num_layers, rnn_size, output_size, input_size
-        self.l_pred_l = nn.Linear(self.num_unroll * self.rnn_size, self.output_size)
-        self.GRUnet = BuildGRUUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
-        self.l_pred_bn = nn.BatchNorm1d(self.output_size)
-        # setattr(self, 'GRUNetLinear', self.l_pred_l)
+    def __init__(self, num_unroll, input_size, fc_size):
+        super(GetResNet, self).__init__()
+        self.num_unroll, self.input_size, self.fc_size = num_unroll, input_size, fc_size
+        self.l_fc_in = nn.Linear(self.input_size,self.input_size)
+        self.l_bn_in = nn.BatchNorm1d(self.input_size)
+        self.l_ResNet = BuildResNetUnrollNet(self.num_unroll, self.input_size, self.fc_size)
+        self.l_fc_out = nn.Linear(self.fc_size, self.fc_size)
 
-    def forward(self, x, init_states_input):
-        self.GRU_output = self.GRUnet(x, init_states_input)
-        self.pred = self.l_pred_bn(self.l_pred_l(self.GRU_output))
+    def forward(self, x):
+        self.x = x
+        self.fc_in = self.l_fc_in(self.x)
+        self.bn_x = self.l_bn_in(self.fc_in)
+        self.resnet = self.l_ResNet(self.bn_x)
+        self.pred = self.l_fc_out(self.resnet)
         return self.pred
 
 
 ###########Usage#######################################
 
 input_size = 20
-output_size = 50
+output_size = 100
 rnn_size = 10
 num_layers = 2
 num_unroll = 3
+model = GetResNet(num_unroll, input_size, output_size)
 # graph of net
 x = torch.rand(3, input_size)
-z = torch.zeros(3, rnn_size * num_layers * 2)
+out = model(x)
+print(model)
+temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]))
+s = Source(temp, filename="test.gv", format="png")
+s.view()
 
 
-# model = BuildGRUStack(input_size, rnn_size, num_layers)
+# model = BuildResNetStack(input_size, rnn_size, num_layers)
 # init_hs = []
 # init_cs = []
 # init_states = z.reshape((z.size(0),num_layers * 2, rnn_size))
@@ -157,23 +140,23 @@ z = torch.zeros(3, rnn_size * num_layers * 2)
 #     init_cs.append(init_states_lst[2*i+1].reshape(num_layers,rnn_size))
 # now_hs, now_cs = model(x, init_hs, init_cs)
 # temp = make_dot((now_hs[2], now_cs[2]), params=dict(list(model.named_parameters())))
-# s = Source(temp, filename="BuildGRUStack.gv", format="png")
+# s = Source(temp, filename="BuildResNetStack.gv", format="png")
 # s.view()
 #
-# model = BuildGRUUnrollNet(num_unroll, num_layers, rnn_size, input_size)
+# model = BuildResNetUnrollNet(num_unroll, num_layers, rnn_size, input_size)
 # out = model(x, z)
 # temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
-# s = Source(temp, filename="BuildGRUUnrollNet.gv", format="png")
+# s = Source(temp, filename="BuildResNetUnrollNet.gv", format="png")
 # s.view()
 #
-# model = GetGRUNet(num_unroll, num_layers, rnn_size, output_size, input_size)
+# model = GetResNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 # output = model(x,z)
 # for i in range(1, num_unroll):
 #     for j in range(num_layers):
-#         model.GRUnet.buildGRUstack[i].l_i2h[j].weight = model.GRUnet.buildGRUstack[0].l_i2h[j].weight
-#         model.GRUnet.buildGRUstack[i].l_h2h[j].weight = model.GRUnet.buildGRUstack[0].l_h2h[j].weight
-#         model.GRUnet.buildGRUstack[i].l_i2h[j].bias = model.GRUnet.buildGRUstack[0].l_i2h[j].bias
-#         model.GRUnet.buildGRUstack[i].l_h2h[j].bias = model.GRUnet.buildGRUstack[0].l_h2h[j].bias
+#         model.ResNetnet.buildResNetstack[i].l_i2h[j].weight = model.ResNetnet.buildResNetstack[0].l_i2h[j].weight
+#         model.ResNetnet.buildResNetstack[i].l_h2h[j].weight = model.ResNetnet.buildResNetstack[0].l_h2h[j].weight
+#         model.ResNetnet.buildResNetstack[i].l_i2h[j].bias = model.ResNetnet.buildResNetstack[0].l_i2h[j].bias
+#         model.ResNetnet.buildResNetstack[i].l_h2h[j].bias = model.ResNetnet.buildResNetstack[0].l_h2h[j].bias
 # print(model)
 # temp = make_dot(output, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
 # s = Source(temp, filename="test.gv", format="png")
@@ -190,6 +173,11 @@ z = torch.zeros(3, rnn_size * num_layers * 2)
 #
 # s = Source(temp, filename="test.gv", format="png")
 # s.view()
+# if HOME == 0:
+#     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# else:
+#     device = "cpu"
+
 
 class MultiClassNLLCriterion(torch.nn.Module):
 
@@ -254,12 +242,12 @@ def AccM(label, pred_prob):
 gpu = 1  # gpu id
 
 if torch.cuda.is_available() and HOME == 0:
-    batch_size = 128  # 10# training batch size
+    batch_size = 256  # 10# training batch size
 else:
     batch_size = 5  # 600000  #
 lr = 0.002  # basic learning rate
 lr_decay_startpoint = 250  # learning rate from which epoch
-num_epochs = 200  # total training epochs
+num_epochs = 400  # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
 N = 3  # the number of receivers
@@ -273,11 +261,17 @@ dataset = 'uniform'  # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), u
 num_nonz = K  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
 input_size = N*200*2  # dimension of observation vector y
 output_size = 12*12  # dimension of sparse vector x
+# # task related parameters
+# # task: y = Ax, given A recovery sparse x from y
+# dataset = 'uniform'  # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), unit (+-1)
+# num_nonz = 3  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
+# input_size = 20  # dimension of observation vector y
+# output_size = 100  # dimension of sparse vector x
 
 # model hyper parameters
 rnn_size = 425  # number of units in RNN cell
-num_layers = 2  # number of stacked RNN layers
-num_unroll = 11  # number of RNN unrolled time steps
+num_layers = 3  # number of stacked RNN layers
+num_unroll = 4  # number of RNN unrolled time steps
 
 # torch.set_num_threads(16)
 # manualSeed = torch.randint(1,10000,(1,))
@@ -286,42 +280,89 @@ torch.set_default_tensor_type(torch.FloatTensor)
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
 
-if torch.cuda.is_available():
-    train_size = int(256*750*6/4)  #
-    valid_size = int(256*750/4)  #
+# if torch.cuda.is_available() and HOME == 0:
+#     train_size = 600000  #
+#     valid_size = 100000  #
+# else:
+#     train_size = 100  # 600000  #
+#     valid_size = 10  # 100000  #
+# valid_data = torch.zeros(valid_size, input_size).to(device)
+# valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
+# batch_data = torch.zeros(batch_size, input_size).to(device)
+# batch_label = torch.zeros(batch_size, num_nonz).to(device)  # for MultiClassNLLCriterion LOSS
+
+if torch.cuda.is_available() and HOME == 0:
+    train_size = int(256*750*6/2)  #
+    valid_size = int(256*750/2)  #
 else:
     train_size = 100  # 600000  #
     valid_size = 10  # 100000  #
+print(device)
 valid_data = torch.zeros(valid_size, input_size).to(device)
 valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
 batch_data = torch.zeros(batch_size, input_size).to(device)
 batch_label = torch.zeros(batch_size, num_nonz).to(device)  # for MultiClassNLLCriterion LOSS
 batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device)  # init_states for GRU
 
+
 # AccM, AccL, Accs = 0, 0, 0
 
 
 err = 0
 
-model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_gru_mimo_' + str(rnn_size)
+model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_ResNet_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
-if torch.cuda.is_available():
-    logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
+if torch.cuda.is_available() and HOME == 0:
+     logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
 else:
     logger_file = "./" + logger_file
 logger = open(logger_file, 'w')
+
 # for k,v in pairs(opt) do logger:write(k .. ' ' .. v ..'\n') end
 # logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
 # logger:close()
 
-# torch.manual_seed(10)
-# if torch.cuda.is_available():
+# # torch.manual_seed(10)
+# # mat_A = torch.rand(output_size,input_size)
+# if torch.cuda.is_available() and HOME == 0:
 #     mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
 # else:
 #     mat_A = torch.load("./mat_A.pt").to(device)
+# # mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
 
 
 
+# def gen_batch(batch_size, num_nonz, mat_A):
+#     # mat_A = loadmat('matrix_corr_unit_20_100.mat')
+#     # mat_A = torch.FloatTensor(mat_A['A']).t()
+#     # print(mat_A.shape)
+#     # mat_A = torch.rand(output_size, input_size)
+#     batch_X = torch.Tensor(batch_size, 100).to(device)
+#     batch_n = torch.Tensor(batch_size, num_nonz).to(device)
+#     bs = batch_size
+#     len = int(100 / num_nonz * num_nonz)
+#     perm = torch.randperm(100)[range(len)].to(device)
+#     #     batch_label = torch.zeros(batch_size, num_nonz).type(torch.LongTensor).to(device)  # for MultiClassNLLCriterion LOSS
+#     for i in range(int(bs * num_nonz / len)):
+#         perm = torch.cat((perm, torch.randperm(100)[range(len)].to(device)))
+#     batch_label = perm[range(bs * num_nonz)].reshape([bs, num_nonz]).type(torch.LongTensor).to(device)
+#     batch_X.zero_()
+#     if dataset == 'uniform':
+#         batch_n.uniform_(-0.5, 0.5)
+#         batch_n[batch_n.gt(0)] = batch_n[batch_n.gt(0)] + 0.1
+#         batch_n[batch_n.le(0)] = batch_n[batch_n.le(0)] - 0.1
+#     #
+#     # print(batch_X.shape)
+#     #     print(batch_X.get_device())
+#     #     print(mat_A.get_device())
+#     #     print(batch_n.get_device())
+#     for i in range(bs):
+#         for j in range(num_nonz):
+#             batch_X[i][batch_label[i][j]] = batch_n[i][j]
+#     batch_data = torch.mm(batch_X, mat_A)  # +0.001*torch.randn(batch_size,input_size).to(device)
+#     # print(batch_label.shape)
+#     # print(batch_data.shape)
+#     return batch_label, batch_data
 def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     c = 3 * 10 ** 8
     dt = 10 ** (-6)
@@ -397,7 +438,7 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     for m in range(M):
         for n in range(N):
             for k in range(K):
-                r_glob[k_random_grid_points_i[k]] = DB * h[k, m, n] * \
+                r_glob[k_random_grid_points_i[k]] = DB[k] * h[k, m, n] * \
                                                   np.sqrt(200000000000) * (1 / tk[k, m, n]) * (1 / rk[k, m, n])
             k_random_grid_points = np.append(k_random_grid_points,k_random_grid_points_i)
             k_random_grid_points_i = k_random_grid_points_i + size_grid_x * size_grid_y
@@ -417,7 +458,7 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
             for n in range(N):
                 l = np.floor(tau[k, m, n] / dt)
                 l = l.astype(int)
-                x[n, range(l, l + L)] = x[n, range(l, l + L)] + DB * s[m, :] * h[k, m, n] * \
+                x[n, range(l, l + L)] = x[n, range(l, l + L)] + DB[k] * s[m, :] * h[k, m, n] * \
                                         np.sqrt(200000000000) * (1 / tk[k, m, n]) * (1 / rk[k, m, n])
 
     x_flat = x[0, :].transpose();
@@ -425,19 +466,21 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
         x_flat = np.concatenate([x_flat, x[n, :].transpose()], axis=0)
 
     return x_flat, r, r_glob, k_random_grid_points
-
 def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
 #     NOISE = 1
 #     H = 1
-    SNR_dB = torch.randint(30,60,(1,)).item()
+#     SNR_dB = torch.randint(30,60,(1,)).item()
+    SNR_dB = np.random.rand(3)
     y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
     batch_data = torch.zeros(batch_size, 2*y.shape[0]).to(device)
 #     batch_label = torch.zeros(batch_size, 2*label.shape[0]).to(device)
     batch_label = torch.zeros(batch_size, label[range(num_nonz)].shape[0]).to(device)
-    r1 = 20
-    r2 = 20
+    r1 = 40
+    r2 = 10
     for i in range(batch_size):
-        SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
+#         SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
+        for k in range(K):
+            SNR_dB[k] = ((r1 - r2) * np.random.rand(1) + r2)
         y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
         batch_data[i] = torch.cat([torch.from_numpy(y.real),torch.from_numpy(y.imag)]).to(device)
 #         batch_data[i] = torch.cat([torch.from_numpy(np.abs(y))]).to(device)
@@ -447,10 +490,10 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
 
     return batch_label.type(torch.LongTensor).to(device), batch_data
 
-
 print("building validation set")
 for i in range(0, valid_size, batch_size):
     #     mat_A = torch.rand(output_size, input_size).to(device)
+    # batch_label, batch_data = gen_batch(batch_size, num_nonz, mat_A)
     batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
     # print(batch_label.shape)
     # print("batch_data shape = " + str(batch_data.shape))
@@ -463,12 +506,12 @@ print('done')
 best_valid_accs = 0
 base_epoch = lr_decay_startpoint
 base_lr = lr
-optimState = {'learningRate': 0.001, 'weigthDecay': 0.0001}
+optimState = {'learningRate': 0.01, 'weigthDecay': 0.0001}
 
-net = GetGRUNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-print(net)
+net = GetResNet(num_unroll, input_size, output_size)
 # print(net)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+# device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+print(device)
 net.to(device)
 # summary(net,[(num_layers,input_size),(num_layers,rnn_size * num_layers * 2)])
 # summary(net,[(batch_size, input_size),(batch_size, num_layers * rnn_size * 2)])
@@ -477,14 +520,10 @@ net.to(device)
 # optimizer = optim.RMSprop(params=net.parameters(), lr=0.001, alpha=0.9, eps=1e-04, weight_decay=0.0001, momentum=0, centered=False)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
-optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'], \
-                          alpha=0.99, eps=1e-05, weight_decay=optimState['weigthDecay'], momentum=0.0, centered=False)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15], gamma=0.25)
-
-# if torch.cuda.is_available():
-#     checkpoint = torch.load("/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
-# else:
-#     checkpoint = torch.load("./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+optimizer = optim.SGD(params=net.parameters(), lr=optimState['learningRate'], \
+                          momentum=0.9, dampening=0, weight_decay=optimState['weigthDecay'], nesterov=False)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15], gamma=0.1)
+# checkpoint = torch.load( "/content/gdrive/My Drive/model_l_2t_17_rnn_800_3.pth")
 # net.load_state_dict(checkpoint['model_state_dict'])
 # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 # epoch = checkpoint['epoch'] + 1
@@ -513,13 +552,13 @@ for epoch in range(epoch, num_epochs):
         batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
         batch_label.to(device)
         optimizer.zero_grad()
-        pred_prob = net(batch_data, batch_zero_states).to(device)  # 0 or 1?!
+        pred_prob = net(batch_data).to(device)  # 0 or 1?!
         err = LOSS(pred_prob, batch_label.to(device))
         err.backward()
         with torch.no_grad():
             for name, param in net.named_parameters():
                 print(name)
-                # print(param.grad.data)
+                #print(param.grad.data)
                 param.grad.clamp_(-4.0, 4.0)
                 gnorm = param.grad.norm()
                 if (gnorm > max_grad_norm):
@@ -564,7 +603,7 @@ for epoch in range(epoch, num_epochs):
     for i in range(0, valid_size, batch_size):
         batch_data = valid_data[range(i, i + batch_size), :]
         batch_label[:, range(0, num_nonz)] = valid_label[range(i, i + batch_size), :]
-        pred_prob = net(batch_data, batch_zero_states)
+        pred_prob = net(batch_data)
         err = LOSS(pred_prob, batch_label)
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.float())
         batch_accl = AccL(batch_label[:, range(0, num_nonz)], pred_prob.float())
