@@ -10,7 +10,7 @@ from torchviz import make_dot
 from graphviz import Source
 
 import time
-HOME = 0
+HOME = 1
 if torch.cuda.is_available() and HOME == 0:
     from google.colab import drive
     drive.mount("/content/gdrive", force_remount=True)
@@ -30,12 +30,12 @@ class BuildResNetStack(nn.Module):
 
     def forward(self, x):
         self.x = x
-        self.fc_in_x = self.fc_in(self.x)
-        self.bn_x = self.bn(self.fc_in_x)
-        self.relu_x = self.relu(self.bn_x)
-        self.skip = self.x + self.fc_out(self.relu_x)
-        self.relu_skip = self.relu(self.skip)
-        return self.relu_skip
+        self.x = self.fc_in(self.x)
+        self.x = self.bn(self.x)
+        self.x = self.relu(self.x)
+        self.x = x + self.fc_out(self.x)
+        self.x = self.relu(self.x)
+        return self.x
 
 class BuildResNetStackInterm(nn.Module):
 
@@ -50,12 +50,12 @@ class BuildResNetStackInterm(nn.Module):
 
     def forward(self, x):
         self.x = x
-        self.fc_in_x = self.fc_in(self.x)
-        self.bn_x = self.bn(self.fc_in_x)
-        self.relu_x = self.relu(self.bn_x)
-        self.skip = self.fc_out[1](self.x) + self.fc_out[0](self.relu_x)
-        self.relu_skip = self.relu(self.skip)
-        return self.relu_skip
+        self.x = self.fc_in(self.x)
+        self.x = self.bn(self.x)
+        self.x = self.relu(self.x)
+        self.x = self.fc_out[1](x) + self.fc_out[0](self.x)
+        self.x = self.relu(self.x)
+        return self.x
 
 
 class BuildResNetUnrollNet(nn.Module):
@@ -65,30 +65,28 @@ class BuildResNetUnrollNet(nn.Module):
         self.num_unroll = num_unroll
         self.fc_size = fc_size
         self.input_size = input_size
-        self.buildResNetstack_lst_in = [BuildResNetStack(self.input_size)] * self.num_unroll
-        self.buildResNetstack_lst_out = [BuildResNetStack(self.fc_size)] * self.num_unroll
-        self.l_ResNets_in = nn.ModuleList(self.buildResNetstack_lst_in)
+        buildResNetstack_lst_in = []
+        buildResNetstack_lst_out = []
+        for i in range(self.num_unroll):
+            buildResNetstack_lst_in.append(BuildResNetStack(self.input_size))
+            buildResNetstack_lst_out.append(BuildResNetStack(self.fc_size))
+
+        self.l_ResNets_in = nn.ModuleList(buildResNetstack_lst_in)
         self.l_ResNets_imd = BuildResNetStackInterm(self.input_size, self.fc_size)
-        self.l_ResNets_out = nn.ModuleList(self.buildResNetstack_lst_out)
+        self.l_ResNets_out = nn.ModuleList(buildResNetstack_lst_out)
 
     def forward(self, x):
         self.x = x
-        # self.res_in = [self.l_ResNets_in[0](self.x)]
-        self.x = self.l_ResNets_in[0](self.x)
-        self.x = self.l_ResNets_in[1](self.x)
-        self.x = self.l_ResNets_in[2](self.x)
-        # for L in range(0, self.num_unroll-1):
-        #     self.res_in.append(self.l_ResNets_in[L+1](self.res_in[L]))
-        # self.res_int = self.l_ResNets_imd(self.res_in[-1])
-        self.res_int = self.l_ResNets_imd(self.x)
-        self.res_out = self.l_ResNets_out[0](self.res_int)
-        self.res_out = self.l_ResNets_out[1](self.res_out)
-        self.res_out = self.l_ResNets_out[2](self.res_out)
+        for L in range(0, self.num_unroll):
+            self.x = self.l_ResNets_in[L](self.x)
+        self.x = self.l_ResNets_imd(self.x)
+        for L in range(0, self.num_unroll):
+            self.x = self.l_ResNets_out[L](self.x)
         # self.res_out = [self.l_ResNets_out[0](self.res_int)]
         # for L in range(0, self.num_unroll-1):
         #     self.res_out.append(self.l_ResNets_out[L+1](self.res_out[L]))
 
-        return self.res_out
+        return self.x
         # return self.res_out[-1]
 
 
@@ -104,11 +102,11 @@ class GetResNet(nn.Module):
 
     def forward(self, x):
         self.x = x
-        self.fc_in = self.l_fc_in(self.x)
-        self.bn_x = self.l_bn_in(self.fc_in)
-        self.resnet = self.l_ResNet(self.bn_x)
-        self.pred = self.l_fc_out(self.resnet)
-        return self.pred
+        self.x = self.l_fc_in(self.x)
+        self.x = self.l_bn_in(self.x)
+        self.x = self.l_ResNet(self.x)
+        self.x = self.l_fc_out(self.x)
+        return self.x
 
 
 ###########Usage#######################################
@@ -117,7 +115,7 @@ input_size = 20
 output_size = 100
 rnn_size = 10
 num_layers = 2
-num_unroll = 3
+num_unroll = 4
 model = GetResNet(num_unroll, input_size, output_size)
 # graph of net
 x = torch.rand(3, input_size)
@@ -275,7 +273,7 @@ num_unroll = 4  # number of RNN unrolled time steps
 # manualSeed = torch.randint(1,10000,(1,))
 # print("Random seed " + str(manualSeed.item()))
 torch.set_default_tensor_type(torch.FloatTensor)
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() and HOME == 0 else "cpu")
 print(device)
 
 # if torch.cuda.is_available() and HOME == 0:
@@ -555,7 +553,7 @@ for epoch in range(epoch, num_epochs):
         err.backward()
         with torch.no_grad():
             for name, param in net.named_parameters():
-                print(name)
+                # print(name)
                 #print(param.grad.data)
                 param.grad.clamp_(-4.0, 4.0)
                 gnorm = param.grad.norm()
@@ -644,7 +642,7 @@ for epoch in range(epoch, num_epochs):
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
                   'loss': err.item()}
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and HOME == 0:
         torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
     else:
         torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)

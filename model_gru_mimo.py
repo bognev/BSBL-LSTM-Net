@@ -10,7 +10,7 @@ import numpy as np
 # from graphviz import Source
 
 import time
-HOME = 0
+HOME = 1
 if torch.cuda.is_available() and HOME == 0:
     from google.colab import drive
     drive.mount("/content/gdrive", force_remount=True)
