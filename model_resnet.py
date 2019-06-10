@@ -17,6 +17,7 @@ if torch.cuda.is_available() and HOME == 0:
 
 
 
+
 class BuildResNetStack(nn.Module):
 
     def __init__(self, input_size):
@@ -24,17 +25,17 @@ class BuildResNetStack(nn.Module):
         self.input_size = input_size
         self.fc_in = nn.Linear(self.input_size,self.input_size)
         self.bn = nn.BatchNorm1d(self.input_size)
+        self.relu = nn.ReLU()
         self.fc_out = nn.Linear(self.input_size,self.input_size)
 
     def forward(self, x):
         self.x = x
-        self.fc_in_x = self.fc_in(self.x)
-        self.bn_x = self.bn(self.fc_in_x)
-        self.relu_x = torch.nn.functional.relu(self.bn_x)
-        self.fc_out_x = self.fc_out(self.relu_x)
-        self.skip = self.x + self.fc_out_x
-        self.relu_skip = torch.nn.functional.relu(self.skip)
-        return self.relu_skip
+        self.x = self.fc_in(self.x)
+        self.x = self.bn(self.x)
+        self.x = self.relu(self.x)
+        self.x = x + self.fc_out(self.x)
+        self.x = self.relu(self.x)
+        return self.x
 
 class BuildResNetStackInterm(nn.Module):
 
@@ -44,17 +45,17 @@ class BuildResNetStackInterm(nn.Module):
         self.fc_size = fc_size
         self.fc_in = nn.Linear(self.input_size,self.input_size)
         self.bn = nn.BatchNorm1d(self.input_size)
+        self.relu = nn.ReLU()
         self.fc_out = nn.ModuleList([nn.Linear(self.input_size,self.fc_size), nn.Linear(self.input_size,self.fc_size)])
 
     def forward(self, x):
         self.x = x
-        self.fc_in_x = self.fc_in(self.x)
-        self.bn_x = self.bn(self.fc_in_x)
-        self.relu_x = torch.nn.functional.relu(self.bn_x)
-        self.fc_out_x = self.fc_out[0](self.relu_x)
-        self.skip = self.fc_out[1](self.x) + self.fc_out_x
-        self.relu_skip = torch.nn.functional.relu(self.skip)
-        return self.relu_skip
+        self.x = self.fc_in(self.x)
+        self.x = self.bn(self.x)
+        self.x = self.relu(self.x)
+        self.x = self.fc_out[1](x) + self.fc_out[0](self.x)
+        self.x = self.relu(self.x)
+        return self.x
 
 
 class BuildResNetUnrollNet(nn.Module):
@@ -64,22 +65,29 @@ class BuildResNetUnrollNet(nn.Module):
         self.num_unroll = num_unroll
         self.fc_size = fc_size
         self.input_size = input_size
-        self.buildResNetstack_lst_in = [BuildResNetStack(self.input_size)] * self.num_unroll
-        self.buildResNetstack_lst_out = [BuildResNetStack(self.fc_size)] * self.num_unroll
-        self.l_ResNets_in = nn.ModuleList(self.buildResNetstack_lst_in)
+        buildResNetstack_lst_in = []
+        buildResNetstack_lst_out = []
+        for i in range(self.num_unroll):
+            buildResNetstack_lst_in.append(BuildResNetStack(self.input_size))
+            buildResNetstack_lst_out.append(BuildResNetStack(self.fc_size))
+
+        self.l_ResNets_in = nn.ModuleList(buildResNetstack_lst_in)
         self.l_ResNets_imd = BuildResNetStackInterm(self.input_size, self.fc_size)
-        self.l_ResNets_out = nn.ModuleList(self.buildResNetstack_lst_out)
+        self.l_ResNets_out = nn.ModuleList(buildResNetstack_lst_out)
 
     def forward(self, x):
-        self.res_in = [self.l_ResNets_in[0](x)]
-        for L in range(0, self.num_unroll-1):
-            self.res_in.append(self.l_ResNets_in[L+1](self.res_in[L]))
-        self.res_int = self.l_ResNets_imd(self.res_in[-1])
-        self.res_out = [self.l_ResNets_out[0](self.res_int)]
-        for L in range(0, self.num_unroll-1):
-            self.res_out.append(self.l_ResNets_out[L+1](self.res_out[L]))
+        self.x = x
+        for L in range(0, self.num_unroll):
+            self.x = self.l_ResNets_in[L](self.x)
+        self.x = self.l_ResNets_imd(self.x)
+        for L in range(0, self.num_unroll):
+            self.x = self.l_ResNets_out[L](self.x)
+        # self.res_out = [self.l_ResNets_out[0](self.res_int)]
+        # for L in range(0, self.num_unroll-1):
+        #     self.res_out.append(self.l_ResNets_out[L+1](self.res_out[L]))
 
-        return self.res_out[-1]
+        return self.x
+        # return self.res_out[-1]
 
 
 class GetResNet(nn.Module):
@@ -94,11 +102,11 @@ class GetResNet(nn.Module):
 
     def forward(self, x):
         self.x = x
-        self.fc_in = self.l_fc_in(self.x)
-        self.bn_x = self.l_bn_in(self.fc_in)
-        self.resnet = self.l_ResNet(self.bn_x)
-        self.pred = self.l_fc_out(self.resnet)
-        return self.pred
+        self.x = self.l_fc_in(self.x)
+        self.x = self.l_bn_in(self.x)
+        self.x = self.l_ResNet(self.x)
+        self.x = self.l_fc_out(self.x)
+        return self.x
 
 
 ###########Usage#######################################
@@ -338,7 +346,7 @@ print('done')
 best_valid_accs = 0
 base_epoch = lr_decay_startpoint
 base_lr = lr
-optimState = {'learningRate': 0.001, 'weigthDecay': 0.0000}
+optimState = {'learningRate': 0.01, 'weigthDecay': 0.0000}
 
 net = GetResNet(num_unroll, input_size, output_size)
 # print(net)
@@ -353,7 +361,11 @@ net.to(device)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
 optimizer = optim.SGD(params=net.parameters(), lr=optimState['learningRate'], \
-                          momentum=0.5, dampening=0, weight_decay=optimState['weigthDecay'], nesterov=False)
+                          momentum=0.9, dampening=0, weight_decay=optimState['weigthDecay'], nesterov=False)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10,
+                                                       verbose=False, threshold=0.0001, threshold_mode='rel', \
+                                                       cooldown=0, min_lr=0, eps=1e-08)
+
 # checkpoint = torch.load( "/content/gdrive/My Drive/model_l_2t_17_rnn_800_3.pth")
 # net.load_state_dict(checkpoint['model_state_dict'])
 # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -443,6 +455,7 @@ for epoch in range(epoch, num_epochs):
         valid_accm = valid_accm + batch_accm
         valid_err = valid_err + err.item()
         nbatch = nbatch + 1
+    scheduler.step(valid_err / nbatch)
     #         if (nbatch+99) % 100 == 0:
     #             print("Eval Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(batch_accs, batch_accl,
     #                                                                                             batch_accm, err.item()))

@@ -16,7 +16,11 @@ if torch.cuda.is_available() and HOME == 0:
     drive.mount("/content/gdrive", force_remount=True)
 
 
-
+c = 3 * 10 ** 8
+dt = 10 ** (-7)
+Ts = 1.6000e-06
+L = int(Ts / dt)
+T = 400
 
 class BuildGRUStack(nn.Module):
 
@@ -96,7 +100,7 @@ class BuildGRUUnrollNet(nn.Module):
         self.now_hs.append(torch.stack(self.init_hs))
 
         for i in range(self.num_unroll):
-            self.now_h = self.buildGRUstack[i](x, self.now_hs[i])
+            self.now_h = self.buildGRUstack[i](x[:, range(i*2*T,(i+1)*2*T)], self.now_hs[i])
             self.now_hs.append(self.now_h)
             self.outputs.append(self.now_hs[i + 1][-1])
             # for L in range(self.num_layers):
@@ -254,7 +258,7 @@ def AccM(label, pred_prob):
 gpu = 1  # gpu id
 
 if torch.cuda.is_available() and HOME == 0:
-    batch_size = 128  # 10# training batch size
+    batch_size = 256  # 10# training batch size
 else:
     batch_size = 5  # 600000  #
 lr = 0.002  # basic learning rate
@@ -262,7 +266,7 @@ lr_decay_startpoint = 250  # learning rate from which epoch
 num_epochs = 200  # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
-N = 3  # the number of receivers
+N = 8  # the number of receivers
 M = 3  # the number of transmitters
 K = 3  # the number of targets
 
@@ -271,13 +275,13 @@ K = 3  # the number of targets
 dataset = 'uniform'  # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), unit (+-1)
 # num_nonz = K*N*M*2  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
 num_nonz = K  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
-input_size = N*200*2  # dimension of observation vector y
-output_size = 12*12  # dimension of sparse vector x
+input_size = T*2  # dimension of observation vector y
+output_size = 13*13  # dimension of sparse vector x
 
 # model hyper parameters
 rnn_size = 425  # number of units in RNN cell
 num_layers = 2  # number of stacked RNN layers
-num_unroll = 11  # number of RNN unrolled time steps
+num_unroll = N  # number of RNN unrolled time steps
 
 # torch.set_num_threads(16)
 # manualSeed = torch.randint(1,10000,(1,))
@@ -292,9 +296,9 @@ if torch.cuda.is_available():
 else:
     train_size = 100  # 600000  #
     valid_size = 10  # 100000  #
-valid_data = torch.zeros(valid_size, input_size).to(device)
+valid_data = torch.zeros(valid_size, N*input_size).to(device)
 valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
-batch_data = torch.zeros(batch_size, input_size).to(device)
+batch_data = torch.zeros(batch_size, N*input_size).to(device)
 batch_label = torch.zeros(batch_size, num_nonz).to(device)  # for MultiClassNLLCriterion LOSS
 batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device)  # init_states for GRU
 
@@ -321,13 +325,8 @@ logger = open(logger_file, 'w')
 #     mat_A = torch.load("./mat_A.pt").to(device)
 
 
-
 def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
-    c = 3 * 10 ** 8
-    dt = 10 ** (-6)
-    Ts = 1.6000e-06
-    L = int(Ts / dt)
-    T = 200
+
     DB = 10. ** (0.1 * SNR_dB)
 
     # N = 8  # the number of receivers
@@ -365,8 +364,8 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
 #     Le = Ls + 125 * 6
 #     dx = 125
     Ls = 0
-    Le = Ls + 250 * 12
-    dx = 250
+    Le = Ls + 4000
+    dx = 333
     dy = dx
     dy = dx
     x_grid = np.arange(Ls, Le, dx)
@@ -374,16 +373,22 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     size_grid_x = len(x_grid)
     size_grid_y = len(y_grid)
     grid_all_points = [[i, j] for i in x_grid for j in y_grid]
+    grid_all_points_a = np.array(grid_all_points)
     r = np.zeros(size_grid_x * size_grid_y * M * N)
-    k_random_grid_points_i = np.random.permutation(size_grid_x * size_grid_y)[range(K)]
     k_random_grid_points = np.array([])
     # Position of targets
     x_k = np.zeros([K])
     y_k = np.zeros([K])
     for kk in range(K):
-        x_k[kk] = grid_all_points[k_random_grid_points_i.item(kk)][0]
-        y_k[kk] = grid_all_points[k_random_grid_points_i.item(kk)][1]
-
+        x_k[kk] = np.random.randint(Ls,Le)
+        y_k[kk] = np.random.randint(Ls,Le)
+    k_random_grid_points_i = np.array([])
+    k_random_grid_points = np.array([])
+    for k in range(K):
+        calc_dist = np.sqrt((grid_all_points_a[range(size_grid_x * size_grid_y), 0] - x_k[k]) ** 2 \
+                            + (grid_all_points_a[range(size_grid_x * size_grid_y), 1] - y_k[k]) ** 2)
+        # grid_all_points_a[calc_dist.argmin()]
+        k_random_grid_points_i = np.append(k_random_grid_points_i, calc_dist.argmin())
 
     # Time delays
     for k in range(K):
@@ -397,7 +402,7 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     for m in range(M):
         for n in range(N):
             for k in range(K):
-                r_glob[k_random_grid_points_i[k]] = DB * h[k, m, n] * \
+                r_glob[k_random_grid_points_i[k].astype(int)] = DB * h[k, m, n] * \
                                                   np.sqrt(200000000000) * (1 / tk[k, m, n]) * (1 / rk[k, m, n])
             k_random_grid_points = np.append(k_random_grid_points,k_random_grid_points_i)
             k_random_grid_points_i = k_random_grid_points_i + size_grid_x * size_grid_y
@@ -434,7 +439,7 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
     batch_data = torch.zeros(batch_size, 2*y.shape[0]).to(device)
 #     batch_label = torch.zeros(batch_size, 2*label.shape[0]).to(device)
     batch_label = torch.zeros(batch_size, label[range(num_nonz)].shape[0]).to(device)
-    r1 = 20
+    r1 = 40
     r2 = 20
     for i in range(batch_size):
         SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
@@ -478,7 +483,7 @@ net.to(device)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
 optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'], \
-                          alpha=0.99, eps=1e-05, weight_decay=optimState['weigthDecay'], momentum=0.0, centered=False)
+                          alpha=0.9, eps=1e-05, weight_decay=optimState['weigthDecay'], momentum=0.0, centered=False)
 # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15], gamma=0.25)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10,
                                                        verbose=False, threshold=0.0001, threshold_mode='rel', \
