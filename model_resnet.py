@@ -362,8 +362,8 @@ net.to(device)
 LOSS = MultiClassNLLCriterion()
 optimizer = optim.SGD(params=net.parameters(), lr=optimState['learningRate'], \
                           momentum=0.9, dampening=0, weight_decay=optimState['weigthDecay'], nesterov=False)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=10,
-                                                       verbose=False, threshold=0.0001, threshold_mode='rel', \
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=4,
+                                                       verbose=True, threshold=0.0001, threshold_mode='rel', \
                                                        cooldown=0, min_lr=0, eps=1e-08)
 
 # checkpoint = torch.load( "/content/gdrive/My Drive/model_l_2t_17_rnn_800_3.pth")
@@ -422,6 +422,8 @@ for epoch in range(epoch, num_epochs):
                                                                                                              batch_accl,
                                                                                                              batch_accm,
                                                                                                              err.item()))
+            for param_group in optimizer.param_groups:
+                print(param_group['lr'])
     end = time.time()
     print("Train [{}] Time {} s-acc {:.4} l-acc {:.4} m-acc {:.4} err {:.4}".format(epoch, end - start, \
                                                                                     train_accs / nbatch,
