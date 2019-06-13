@@ -24,7 +24,7 @@ class BuildResNetStack(nn.Module):
         super(BuildResNetStack, self).__init__()
         self.N = N
         self.input_size = input_size
-        self.conv1 = torch.nn.Conv1d(in_channels=self.N, out_channels=self.N, kernel_size=400, stride=1, \
+        self.conv1 = torch.nn.Conv1d(in_channels=self.N, out_channels=1, kernel_size=20, stride=2, \
                                      padding=0, dilation=1, groups=1)
         self.maxpool = torch.nn.MaxPool1d(kernel_size=10, stride=2, padding=4, dilation=1, return_indices=False, ceil_mode=False)
         # self.fc_in = nn.Linear(self.input_size,self.input_size)
