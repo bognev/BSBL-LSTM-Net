@@ -10,7 +10,7 @@ from torchviz import make_dot
 from graphviz import Source
 
 import time
-HOME = 1
+HOME = 0
 if torch.cuda.is_available() and HOME == 0:
     from google.colab import drive
     drive.mount("/content/gdrive", force_remount=True)
@@ -20,29 +20,38 @@ if torch.cuda.is_available() and HOME == 0:
 
 class BuildResNetStack(nn.Module):
 
-    def __init__(self, N, input_size):
+    def __init__(self, in_channels, out_channels, input_size, kernel_size, stride, padding):
         super(BuildResNetStack, self).__init__()
-        self.N = N
+        self.in_channels = in_channels
+        self.out_channels = out_channels
         self.input_size = input_size
-        self.conv1 = torch.nn.Conv1d(in_channels=self.N, out_channels=self.N, kernel_size=19, stride=1, \
-                                     padding=9, dilation=1, groups=1)
-        # self.maxpool = torch.nn.MaxPool1d(kernel_size=10, stride=2, padding=4, dilation=1, return_indices=False, ceil_mode=False)
-        # self.fc_in = nn.Linear(self.input_size,self.input_size)
-        self.bn = nn.BatchNorm1d(self.N, self.input_size)
-        self.relu = nn.ReLU()
-        # self.fc_out = nn.Linear(self.input_size,self.input_size)
-        self.conv2 = torch.nn.Conv1d(in_channels=self.N, out_channels=self.N, kernel_size=19, stride=1, \
-                                     padding=9, dilation=1, groups=1)
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.padding = padding
+        self.conv1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels, kernel_size=self.kernel_size, stride=self.stride, \
+                                     padding=self.padding, dilation=1, groups=1)
+        self.conv1x1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels,
+                                     kernel_size=1, stride=self.stride, \
+                                     padding=0, dilation=1, groups=1)
+        self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
+        self.bn = nn.BatchNorm1d(self.out_channels, self.output_size)
+        self.relu1 = nn.ReLU()
+        self.conv2 = torch.nn.Conv1d(in_channels=self.out_channels, out_channels=self.out_channels, kernel_size=self.kernel_size, stride=self.stride, \
+                                     padding=self.padding, dilation=1, groups=1)
+        self.maxpool = torch.nn.MaxPool1d(kernel_size=2, stride=None, padding=0, dilation=1, return_indices=False,
+                                          ceil_mode=False)
+        self.relu2 = nn.ReLU()
 
     def forward(self, x):
         self.x = x
         self.x = self.conv1(self.x)
         self.x = self.bn(self.x)
-        self.x = self.relu(self.x)
+        self.x = self.relu1(self.x)
         # self.x = self.maxpool(self.x)
         #print(self.x.shape)
-        self.x = x + self.conv2(self.x)
-        self.x = self.relu(self.x)
+        self.x = self.conv1x1(x) + self.conv2(self.x)
+        self.x = self.maxpool(self.x)
+        self.x = self.relu2(self.x)
         return self.x
 
 class BuildResNetStackInterm(nn.Module):
@@ -52,14 +61,16 @@ class BuildResNetStackInterm(nn.Module):
         self.N = N
         self.input_size = input_size
         self.fc_size = fc_size
-        self.fc_in = nn.Linear(self.input_size,self.input_size)
-        self.bn = nn.BatchNorm1d(self.N, self.input_size)
+        # self.fc_in = nn.Linear(self.input_size,self.input_size)
+        self.conv1 = torch.nn.Conv1d(in_channels=self.N, out_channels=4*self.N, kernel_size=19, stride=2, \
+                                     padding=9, dilation=1, groups=1)
+        self.bn = nn.BatchNorm1d(4*self.N, self.input_size)
         self.relu = nn.ReLU()
         self.fc_out = nn.ModuleList([nn.Linear(self.input_size,self.fc_size), nn.Linear(self.input_size,self.fc_size)])
 
     def forward(self, x):
         self.x = x
-        self.x = self.fc_in(self.x)
+        self.x = self.conv1(self.x)
         self.x = self.bn(self.x)
         self.x = self.relu(self.x)
         self.x = self.fc_out[1](x) + self.fc_out[0](self.x)
@@ -74,24 +85,56 @@ class BuildResNetUnrollNet(nn.Module):
         self.N = N
         self.num_unroll = num_unroll
         self.fc_size = fc_size
-        self.input_size = input_size
+
         buildResNetstack_lst_in = []
-        buildResNetstack_lst_out = []
-        for i in range(self.num_unroll):
-            buildResNetstack_lst_in.append(BuildResNetStack(self.N, self.input_size))
-            buildResNetstack_lst_out.append(BuildResNetStack(self.N, self.fc_size))
+        self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 8, 16, input_size, 19, 1, 9
+        self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
+        self.output_size = self.output_size/2
+        print(self.output_size)
+        buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
+                                                        self.kernel_size, self.stride, self.padding))
+
+        self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 16, 32, self.output_size, 9, 1, 4
+        self.output_size = (self.output_size - self.kernel_size + 2 * self.padding) / self.stride + 1
+        self.output_size = self.output_size / 2
+        print(self.output_size)
+        buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
+                                                        self.kernel_size, self.stride, self.padding))
+
+        self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 32, 64, self.output_size, 5, 1, 2
+        self.output_size = (self.output_size - self.kernel_size + 2 * self.padding) / self.stride + 1
+        self.output_size = self.output_size / 2
+        print(self.output_size)
+        buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
+                                                        self.kernel_size, self.stride,self.padding))
+
+        self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 64, 128, self.output_size, 3, 1, 1
+        self.output_size = (self.output_size - self.kernel_size + 2 * self.padding) / self.stride + 1
+        self.output_size = self.output_size / 2
+        print(self.output_size)
+        buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
+                                                        self.kernel_size, self.stride, self.padding))
 
         self.l_ResNets_in = nn.ModuleList(buildResNetstack_lst_in)
-        self.l_ResNets_imd = BuildResNetStackInterm(self.N, self.input_size, self.fc_size)
-        self.l_ResNets_out = nn.ModuleList(buildResNetstack_lst_out)
+        # self.l_ResNets_imd = BuildResNetStackInterm(self.N, self.input_size, self.fc_size)
+        # buildResNetstack_lst_out = []
+        # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
+        # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
+        # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
+        # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
+
+
+        # self.l_ResNets_out = nn.ModuleList(buildResNetstack_lst_out)
 
     def forward(self, x):
         self.x = x
         for L in range(0, self.num_unroll):
             self.x = self.l_ResNets_in[L](self.x)
-        self.x = self.l_ResNets_imd(self.x)
-        for L in range(0, self.num_unroll):
-            self.x = self.l_ResNets_out[L](self.x)
+            # print(self.x.shape)
+        # print("a")
+        # self.x = self.l_ResNets_imd(self.x)
+        # for L in range(0, self.num_unroll):
+        #     self.x = self.l_ResNets_out[L](self.x)
         # self.res_out = [self.l_ResNets_out[0](self.res_int)]
         # for L in range(0, self.num_unroll-1):
         #     self.res_out.append(self.l_ResNets_out[L+1](self.res_out[L]))
@@ -104,16 +147,24 @@ class GetResNet(nn.Module):
 
     def __init__(self, N, num_unroll, input_size, fc_size):
         super(GetResNet, self).__init__()
-        self.N = N
-        self.num_unroll, self.input_size, self.fc_size = num_unroll, input_size, fc_size
-        self.l_fc_in = nn.Linear(self.input_size,self.input_size)
+        self.num_unroll, self.fc_size = num_unroll, fc_size
+        self.in_channels = N
+        self.out_channels = N
+        self.input_size = input_size
+        self.kernel_size = 1
+        self.stride = 1
+        self.padding = 0
+        self.conv1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels,
+                                     kernel_size=self.kernel_size, stride=self.stride, \
+                                     padding=self.padding, dilation=1, groups=1)
+        self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
         self.l_bn_in = nn.BatchNorm1d(N, self.input_size)
         self.l_ResNet = BuildResNetUnrollNet(N, self.num_unroll, self.input_size, self.fc_size)
-        self.l_fc_out = nn.Linear(self.fc_size*self.N, self.fc_size)
+        self.l_fc_out = nn.Linear(int(self.num_unroll*2*self.num_unroll**2*self.input_size/self.num_unroll**2), self.fc_size)
 
     def forward(self, x):
         self.x = x
-        self.x = self.l_fc_in(self.x)
+        self.x = self.conv1(self.x)
         self.x = self.l_bn_in(self.x)
         self.x = self.l_ResNet(self.x)
         self.x = self.l_fc_out(self.x.view(self.x.shape[0],-1))
@@ -122,19 +173,19 @@ class GetResNet(nn.Module):
 
 ###########Usage#######################################
 #plot
-input_size = 20
-output_size = 100
-rnn_size = 10
-num_layers = 2
-num_unroll = 4
-model = GetResNet(8, num_unroll, input_size, output_size)
-# graph of net
-x = torch.rand(3, input_size)
-out = model(x)
-print(model)
-temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]))
-s = Source(temp, filename="test.gv", format="png")
-s.view()
+# input_size = 400
+# output_size = 144
+# rnn_size = 10
+# num_layers = 2
+# num_unroll = 4
+# model = GetResNet(8, 4, input_size, output_size)
+# # graph of net
+# x = torch.rand(3, 8, input_size)
+# out = model(x)
+# print(model)
+# temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]))
+# s = Source(temp, filename="test.gv", format="png")
+# s.view()
 
 
 # model = BuildResNetStack(input_size, rnn_size, num_layers)
