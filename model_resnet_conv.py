@@ -34,7 +34,7 @@ class BuildResNetStack(nn.Module):
                                      kernel_size=1, stride=self.stride, \
                                      padding=0, dilation=1, groups=1)
         self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
-        self.bn = nn.BatchNorm1d(self.out_channels, self.output_size)
+        self.bn = nn.BatchNorm1d(self.out_channels)#, self.output_size)
         self.relu1 = nn.ReLU()
         self.conv2 = torch.nn.Conv1d(in_channels=self.out_channels, out_channels=self.out_channels, kernel_size=self.kernel_size, stride=self.stride, \
                                      padding=self.padding, dilation=1, groups=1)
@@ -50,8 +50,8 @@ class BuildResNetStack(nn.Module):
         # self.x = self.maxpool(self.x)
         #print(self.x.shape)
         self.x = self.conv1x1(x) + self.conv2(self.x)
-        self.x = self.maxpool(self.x)
         self.x = self.relu2(self.x)
+        self.x = self.maxpool(self.x)
         return self.x
 
 class BuildResNetStackInterm(nn.Module):
@@ -158,7 +158,7 @@ class GetResNet(nn.Module):
                                      kernel_size=self.kernel_size, stride=self.stride, \
                                      padding=self.padding, dilation=1, groups=1)
         self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
-        self.l_bn_in = nn.BatchNorm1d(N, self.input_size)
+        self.l_bn_in = nn.BatchNorm1d(N)#, self.input_size)
         self.l_ResNet = BuildResNetUnrollNet(N, self.num_unroll, self.input_size, self.fc_size)
         self.l_fc_out = nn.Linear(int(self.num_unroll*2*self.num_unroll**2*self.input_size/self.num_unroll**2), self.fc_size)
 
@@ -171,8 +171,8 @@ class GetResNet(nn.Module):
         return self.x
 
 
-###########Usage#######################################
-#plot
+##########Usage#######################################
+# #plot
 # input_size = 400
 # output_size = 144
 # rnn_size = 10
@@ -187,54 +187,6 @@ class GetResNet(nn.Module):
 # s = Source(temp, filename="test.gv", format="png")
 # s.view()
 
-
-# model = BuildResNetStack(input_size, rnn_size, num_layers)
-# init_hs = []
-# init_cs = []
-# init_states = z.reshape((z.size(0),num_layers * 2, rnn_size))
-# init_states_lst = list(init_states.chunk(num_layers * 2,1))
-# for i in range(num_layers):
-#     init_hs.append(init_states_lst[2*i].reshape(num_layers,rnn_size))
-#     init_cs.append(init_states_lst[2*i+1].reshape(num_layers,rnn_size))
-# now_hs, now_cs = model(x, init_hs, init_cs)
-# temp = make_dot((now_hs[2], now_cs[2]), params=dict(list(model.named_parameters())))
-# s = Source(temp, filename="BuildResNetStack.gv", format="png")
-# s.view()
-#
-# model = BuildResNetUnrollNet(num_unroll, num_layers, rnn_size, input_size)
-# out = model(x, z)
-# temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
-# s = Source(temp, filename="BuildResNetUnrollNet.gv", format="png")
-# s.view()
-#
-# model = GetResNet(num_unroll, num_layers, rnn_size, output_size, input_size)
-# output = model(x,z)
-# for i in range(1, num_unroll):
-#     for j in range(num_layers):
-#         model.ResNetnet.buildResNetstack[i].l_i2h[j].weight = model.ResNetnet.buildResNetstack[0].l_i2h[j].weight
-#         model.ResNetnet.buildResNetstack[i].l_h2h[j].weight = model.ResNetnet.buildResNetstack[0].l_h2h[j].weight
-#         model.ResNetnet.buildResNetstack[i].l_i2h[j].bias = model.ResNetnet.buildResNetstack[0].l_i2h[j].bias
-#         model.ResNetnet.buildResNetstack[i].l_h2h[j].bias = model.ResNetnet.buildResNetstack[0].l_h2h[j].bias
-# print(model)
-# temp = make_dot(output, params=dict(list(model.named_parameters())+ [('x', x)]+ [('z', z)]))
-# s = Source(temp, filename="test.gv", format="png")
-# s.view()
-
-# modell = nn.Sequential()
-# modell.add_module('W0', nn.Linear(8, 16))
-# modell.add_module('tanh', nn.Tanh())
-# modell.add_module('W1', nn.Linear(16, 1))
-#
-# x = torch.randn(1,8)
-#
-# temp = make_dot(modell(x), params=dict(modell.named_parameters()))
-#
-# s = Source(temp, filename="test.gv", format="png")
-# s.view()
-# if HOME == 0:
-#     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-# else:
-#     device = "cpu"
 
 
 class MultiClassNLLCriterion(torch.nn.Module):
@@ -302,10 +254,10 @@ gpu = 1  # gpu id
 if torch.cuda.is_available() and HOME == 0:
     batch_size = 256  # 10# training batch size
 else:
-    batch_size = 5  # 600000  #
+    batch_size = 8  # 600000  #
 lr = 0.002  # basic learning rate
 lr_decay_startpoint = 250  # learning rate from which epoch
-num_epochs = 400  # total training epochs
+num_epochs = 200  # total training epochs
 max_grad_norm = 5.0
 clip_gradient = 4.0
 N = 8  # the number of receivers
@@ -317,7 +269,7 @@ K = 3  # the number of targets
 dataset = 'uniform'  # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), unit (+-1)
 # num_nonz = K*N*M*2  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
 num_nonz = K  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
-input_size = 200*2  # dimension of observation vector y
+input_size = 400*2  # dimension of observation vector y
 output_size = 12*12  # dimension of sparse vector x
 # # task related parameters
 # # task: y = Ax, given A recovery sparse x from y
@@ -350,11 +302,11 @@ print(device)
 # batch_label = torch.zeros(batch_size, num_nonz).to(device)  # for MultiClassNLLCriterion LOSS
 
 if torch.cuda.is_available() and HOME == 0:
-    train_size = int(256*750*6/2)  #
-    valid_size = int(256*750/2)  #
+    train_size = int(256*800)  #
+    valid_size = int(256*200)  #
 else:
-    train_size = 100  # 600000  #
-    valid_size = 10  # 100000  #
+    train_size = 256  # 600000  #
+    valid_size = 32  # 100000  #
 print(device)
 valid_data = torch.zeros(valid_size, N, input_size).to(device)
 valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
@@ -423,10 +375,10 @@ logger = open(logger_file, 'w')
 #     return batch_label, batch_data
 def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     c = 3 * 10 ** 8
-    dt = 10 ** (-6)
-    Ts = 1.6000e-06
+    dt = 10 ** (-7)
+    Ts = 0.8000e-06
     L = int(Ts / dt)
-    T = 200
+    T = 400
     DB = 10. ** (0.1 * SNR_dB)
 
     # N = 8  # the number of receivers
@@ -536,9 +488,9 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
     r1 = 40
     r2 = 10
     for i in range(batch_size):
-#         SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
+        # SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
         for k in range(K):
-            SNR_dB[k] = ((r1 - r2) * np.random.rand(1) + r2)
+            SNR_dB[k] = 10#((r1 - r2) * np.random.rand(1) + r2)
         y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
         batch_data[i,:,:] = torch.cat([torch.from_numpy(y.real),torch.from_numpy(y.imag)], dim=1).to(device)
 #         batch_data[i] = torch.cat([torch.from_numpy(np.abs(y))]).to(device)
@@ -552,7 +504,7 @@ print("building validation set")
 for i in range(0, valid_size, batch_size):
     #     mat_A = torch.rand(output_size, input_size).to(device)
     # batch_label, batch_data = gen_batch(batch_size, num_nonz, mat_A)
-    batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
+    batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
     # print(batch_label.shape)
     # print("batch_data shape = " + str(batch_data.shape))
     # print("valid_data shape = " + str(valid_data.shape))
@@ -564,7 +516,7 @@ print('done')
 best_valid_accs = 0
 base_epoch = lr_decay_startpoint
 base_lr = lr
-optimState = {'learningRate': 0.01, 'weigthDecay': 0.0001}
+optimState = {'learningRate': 0.0001, 'weigthDecay': 0.0000}
 
 net = GetResNet(N, num_unroll, input_size, output_size)
 # print(net)
@@ -607,7 +559,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
+        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data).to(device)  # 0 or 1?!
@@ -615,14 +567,14 @@ for epoch in range(epoch, num_epochs):
         err.backward()
         # with torch.no_grad():
         #     for name, param in net.named_parameters():
-        #         # print(name)
-        #         #print(param.grad.data)
+        #         print(name)
+        #         print(param.grad.data.max())
+        #         print(" ")
         #         param.grad.clamp_(-4.0, 4.0)
         #         gnorm = param.grad.norm()
         #         if (gnorm > max_grad_norm):
         #             param.grad.mul_(max_grad_norm / gnorm)
         optimizer.step()
-        scheduler.step()
         #         print(pred_prob.get_device())
         #         print(batch_label.get_device())
         batch_accs = AccS(batch_label[:, range(0, num_nonz)], pred_prob.to(device).float())
@@ -633,7 +585,13 @@ for epoch in range(epoch, num_epochs):
         train_accm = train_accm + batch_accm
         train_err = train_err + err.item()
         nbatch = nbatch + 1
-        if (nbatch) % 255 == 1:
+        if(torch.cuda.is_available() and HOME == 0):
+            if (nbatch) % 255 == 1:
+                print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(batch_accs,
+                                                                                                             batch_accl,
+                                                                                                             batch_accm,
+                                                                                                             err.item()))
+        else:
             print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(batch_accs,
                                                                                                              batch_accl,
                                                                                                              batch_accm,
@@ -685,6 +643,7 @@ for epoch in range(epoch, num_epochs):
                                                                                              valid_accl / nbatch, \
                                                                                              train_accm / nbatch,
                                                                                              valid_err / nbatch))
+    scheduler.step()
     # if(valid_accs > best_valid_accs):
     #     best_valid_accs = valid_accs
     #     print("saving model")
