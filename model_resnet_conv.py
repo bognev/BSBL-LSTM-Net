@@ -5,15 +5,15 @@ import torch.optim as optim
 import numpy as np
 # from mat4py import loadmat
 # #from torchsummary import summary
-from graphviz import Digraph
-from torchviz import make_dot
-from graphviz import Source
+# from graphviz import Digraph
+# from torchviz import make_dot
+# from graphviz import Source
 
 import time
 HOME = 0
-if torch.cuda.is_available() and HOME == 0:
-    from google.colab import drive
-    drive.mount("/content/gdrive", force_remount=True)
+# if torch.cuda.is_available() and HOME == 0:
+#     from google.colab import drive
+#     drive.mount("/content/gdrive", force_remount=True)
 
 
 
@@ -322,11 +322,11 @@ err = 0
 
 model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_ResNet_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
-if torch.cuda.is_available() and HOME == 0:
-     logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
-else:
-    logger_file = "./" + logger_file
-logger = open(logger_file, 'w')
+# if torch.cuda.is_available() and HOME == 0:
+#      logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
+# else:
+#     logger_file = "./" + logger_file
+# logger = open(logger_file, 'w')
 
 # for k,v in pairs(opt) do logger:write(k .. ' ' .. v ..'\n') end
 # logger:write('network have ' .. paras:size(1) .. ' parameters' .. '\n')
@@ -516,7 +516,7 @@ print('done')
 best_valid_accs = 0
 base_epoch = lr_decay_startpoint
 base_lr = lr
-optimState = {'learningRate': 0.0001, 'weigthDecay': 0.0000}
+optimState = {'learningRate': 0.01, 'weigthDecay': 0.0001}
 
 net = GetResNet(N, num_unroll, input_size, output_size)
 # print(net)
@@ -567,9 +567,8 @@ for epoch in range(epoch, num_epochs):
         err.backward()
         # with torch.no_grad():
         #     for name, param in net.named_parameters():
-        #         print(name)
-        #         print(param.grad.data.max())
-        #         print(" ")
+        #         # print(name)
+        #         #print(param.grad.data)
         #         param.grad.clamp_(-4.0, 4.0)
         #         gnorm = param.grad.norm()
         #         if (gnorm > max_grad_norm):
@@ -602,11 +601,11 @@ for epoch in range(epoch, num_epochs):
                                                                                     train_accl / nbatch, \
                                                                                     train_accm / nbatch,
                                                                                     train_err / nbatch))
-    logger.write("Train [{}] Time {:.4} s-acc {:.4} l-acc {:.4} m-acc {:.4} err {:.4}\n".format(epoch, end - start, \
-                                                                                                train_accs / nbatch,
-                                                                                                train_accl / nbatch, \
-                                                                                                train_accm / nbatch,
-                                                                                                train_err / nbatch))
+    # logger.write("Train [{}] Time {:.4} s-acc {:.4} l-acc {:.4} m-acc {:.4} err {:.4}\n".format(epoch, end - start, \
+    #                                                                                             train_accs / nbatch,
+    #                                                                                             train_accl / nbatch, \
+    #                                                                                             train_accm / nbatch,
+    #                                                                                             train_err / nbatch))
 
     # eval
     nbatch = 0
@@ -638,11 +637,11 @@ for epoch in range(epoch, num_epochs):
                                                                                     valid_accl / nbatch, \
                                                                                     valid_accm / nbatch,
                                                                                     valid_err / nbatch))
-    logger.write("Valid [{}] Time {} s-acc {:.4} l-acc {:.4} m-acc {:.4} err {:.4}\n".format(epoch, end - start, \
-                                                                                             valid_accs / nbatch,
-                                                                                             valid_accl / nbatch, \
-                                                                                             train_accm / nbatch,
-                                                                                             valid_err / nbatch))
+    # logger.write("Valid [{}] Time {} s-acc {:.4} l-acc {:.4} m-acc {:.4} err {:.4}\n".format(epoch, end - start, \
+    #                                                                                          valid_accs / nbatch,
+    #                                                                                          valid_accl / nbatch, \
+    #                                                                                          train_accm / nbatch,
+    #                                                                                          valid_err / nbatch))
     scheduler.step()
     # if(valid_accs > best_valid_accs):
     #     best_valid_accs = valid_accs
@@ -663,11 +662,11 @@ for epoch in range(epoch, num_epochs):
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
                   'loss': err.item()}
-    if torch.cuda.is_available() and HOME == 0:
-        torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
-    else:
-        torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
-    logger.close()
+    # if torch.cuda.is_available() and HOME == 0:
+    #     torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    # else:
+    #     torch.save(checkpoint, "./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+    # logger.close()
 
 
 
