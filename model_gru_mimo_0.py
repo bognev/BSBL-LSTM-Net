@@ -10,7 +10,7 @@ import numpy as np
 # from graphviz import Source
 
 import time
-HOME = 0
+HOME = 1
 if torch.cuda.is_available() and HOME == 0:
     from google.colab import drive
     drive.mount("/content/gdrive", force_remount=True)
@@ -18,7 +18,7 @@ if torch.cuda.is_available() and HOME == 0:
 
 c = 3 * 10 ** 8
 dt = 10 ** (-7)
-Ts = 1.6000e-06
+Ts = 0.8000e-06
 L = int(Ts / dt)
 T = 400
 
@@ -106,16 +106,16 @@ class BuildGRUUnrollNet(nn.Module):
             # for L in range(self.num_layers):
             #     setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
             #     setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
-        # for i in range(1, self.num_unroll):
-        #     for j in range(self.num_layers):
-        #         self.buildGRUstack[i].l_i2h[j].weight.data = self.buildGRUstack[0].l_i2h[j].weight.data
-        #         self.buildGRUstack[i].l_h2h[j].weight.data = self.buildGRUstack[0].l_h2h[j].weight.data
-        #         self.buildGRUstack[i].l_i2h[j].bias.data = self.buildGRUstack[0].l_i2h[j].bias.data
-        #         self.buildGRUstack[i].l_h2h[j].bias.data = self.buildGRUstack[0].l_h2h[j].bias.data
-        #         self.buildGRUstack[i].l_i2h[j].weight.grad = self.buildGRUstack[0].l_i2h[j].weight.grad
-        #         self.buildGRUstack[i].l_h2h[j].weight.grad = self.buildGRUstack[0].l_h2h[j].weight.grad
-        #         self.buildGRUstack[i].l_i2h[j].bias.grad = self.buildGRUstack[0].l_i2h[j].bias.grad
-        #         self.buildGRUstack[i].l_h2h[j].bias.grad = self.buildGRUstack[0].l_h2h[j].bias.grad
+        for i in range(1, self.num_unroll):
+            for j in range(self.num_layers):
+                self.buildGRUstack[i].l_i2h[j].weight.data = self.buildGRUstack[0].l_i2h[j].weight.data
+                self.buildGRUstack[i].l_h2h[j].weight.data = self.buildGRUstack[0].l_h2h[j].weight.data
+                self.buildGRUstack[i].l_i2h[j].bias.data = self.buildGRUstack[0].l_i2h[j].bias.data
+                self.buildGRUstack[i].l_h2h[j].bias.data = self.buildGRUstack[0].l_h2h[j].bias.data
+                self.buildGRUstack[i].l_i2h[j].weight.grad = self.buildGRUstack[0].l_i2h[j].weight.grad
+                self.buildGRUstack[i].l_h2h[j].weight.grad = self.buildGRUstack[0].l_h2h[j].weight.grad
+                self.buildGRUstack[i].l_i2h[j].bias.grad = self.buildGRUstack[0].l_i2h[j].bias.grad
+                self.buildGRUstack[i].l_h2h[j].bias.grad = self.buildGRUstack[0].l_h2h[j].bias.grad
         self.output = self.outputs[0]
         for i in range(1, self.num_unroll):
             self.output = torch.cat((self.output, self.outputs[i]), 1)
@@ -258,7 +258,7 @@ def AccM(label, pred_prob):
 gpu = 1  # gpu id
 
 if torch.cuda.is_available() and HOME == 0:
-    batch_size = 128  # 10# training batch size
+    batch_size = 256  # 10# training batch size
 else:
     batch_size = 5  # 600000  #
 lr = 0.002  # basic learning rate
@@ -291,8 +291,8 @@ device = torch.device("cuda:0" if torch.cuda.is_available() and HOME == 0 else "
 print(device)
 
 if torch.cuda.is_available():
-    train_size = int(batch_size*1000)  #
-    valid_size = int(batch_size*100)  #  #
+    train_size = int(batch_size*800)  #
+    valid_size = int(batch_size*200)  #  #
 else:
     train_size = 100  # 600000  #
     valid_size = 10  # 100000  #
@@ -300,11 +300,11 @@ print(train_size)
 print(valid_size)
 print(batch_size)
 print(N*input_size)
-valid_data = torch.zeros(valid_size, N*input_size).cuda()
-valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).cuda()
-batch_data = torch.zeros(batch_size, N*input_size).cuda()
-batch_label = torch.zeros(batch_size, num_nonz).cuda()  # for MultiClassNLLCriterion LOSS
-batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).cuda()  # init_states for GRU
+valid_data = torch.zeros(valid_size, N*input_size).to(device)
+valid_label = torch.zeros(valid_size, num_nonz).type(torch.LongTensor).to(device)
+batch_data = torch.zeros(batch_size, N*input_size).to(device)
+batch_label = torch.zeros(batch_size, num_nonz).to(device)  # for MultiClassNLLCriterion LOSS
+batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device)  # init_states for GRU
 
 # AccM, AccL, Accs = 0, 0, 0
 
@@ -339,16 +339,16 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     # K = 1  # the number of targets
     # np.random.seed(15)
     # Position of receivers
-    x_r = np.array([1000, 2000, 2500, 2500, 2000, 1000, 500, 500])+550#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
+    x_r = np.array([1000, 2000, 2500, 2500, 2000, 1000, 500, 500])#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
     # 1500,3000,500,2500,1000,1500,500,3000,\
     # 2500,3500,1000,3500,2000,4000,3000,3000]+500*(np.random.rand(N)-0.5))
-    y_r = np.array([500, 500, 1000, 2000, 2500, 2500, 2000, 1500])+550#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
+    y_r = np.array([500, 500, 1000, 2000, 2500, 2500, 2000, 1500])#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
     # 3500,3500,500,4000,4000,2500,3000,500,\
     # 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
 
     # Position of transmitters
-    x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000])+550#+500*np.random.rand(1)
-    y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0])+550#+500*np.random.rand(1)
+    x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000])#+500*np.random.rand(1)
+    y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0])#+500*np.random.rand(1)
 
     # NOISE = 1  # on/off noise
     # H = 1  # on/off êîýôôèöèåíòû îòðàæåíèÿ
@@ -362,8 +362,8 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
 
     s = np.zeros([M, L]) + 1j * np.zeros([M, L])
     for m in range(M):
-        s[m] = np.exp(1j * 2 * np.pi * (m) * np.arange(L) / M) / np.sqrt(L);
-        # sqrt(0.5)*(randn(1,L)+1i*randn(1,L))/sqrt(L);
+        s[m] = np.exp(1j * 2 * np.pi * (m) * np.arange(L) / M) / np.sqrt(L);#np.sqrt(0.5)*(np.random.randn(1,L)+1j*np.random.randn(1,L))/np.sqrt(L);#
+        #
 #     Ls = 875
 #     Le = Ls + 125 * 6
 #     dx = 125
@@ -384,8 +384,8 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     x_k = np.zeros([K])
     y_k = np.zeros([K])
     for kk in range(K):
-        x_k[kk] = np.random.randint(Ls,Le)
-        y_k[kk] = np.random.randint(Ls,Le)
+        x_k[kk] = np.random.randint(Ls,Le)+np.random.rand(1)
+        y_k[kk] = np.random.randint(Ls,Le)+np.random.rand(1)
     k_random_grid_points_i = np.array([])
     k_random_grid_points = np.array([])
     for k in range(K):
@@ -406,7 +406,7 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     for m in range(M):
         for n in range(N):
             for k in range(K):
-                r_glob[k_random_grid_points_i[k].astype(int)] = DB * h[k, m, n] * \
+                r_glob[k_random_grid_points_i[k].astype(int)] = DB[k] * h[k, m, n] * \
                                                   np.sqrt(200000000000) * (1 / tk[k, m, n]) * (1 / rk[k, m, n])
             k_random_grid_points = np.append(k_random_grid_points,k_random_grid_points_i)
             k_random_grid_points_i = k_random_grid_points_i + size_grid_x * size_grid_y
@@ -426,7 +426,7 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
             for n in range(N):
                 l = np.floor(tau[k, m, n] / dt)
                 l = l.astype(int)
-                x[n, range(l, l + L)] = x[n, range(l, l + L)] + DB * s[m, :] * h[k, m, n] * \
+                x[n, range(l, l + L)] = x[n, range(l, l + L)] + DB[k] * s[m, :] * h[k, m, n] * \
                                         np.sqrt(200000000000) * (1 / tk[k, m, n]) * (1 / rk[k, m, n])
 
     x_flat = x[0, :].transpose();
@@ -438,7 +438,7 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
 def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
 #     NOISE = 1
 #     H = 1
-    SNR_dB = torch.randint(30,60,(1,)).item()
+    SNR_dB = np.random.rand(3)
     y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
     batch_data = torch.zeros(batch_size, 2*y.shape[0])
 #     batch_label = torch.zeros(batch_size, 2*label.shape[0]).to(device)
@@ -446,7 +446,9 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
     r1 = 40
     r2 = 20
     for i in range(batch_size):
-        SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
+        # SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
+        for k in range(K):
+            SNR_dB[k] = 10  # ((r1 - r2) * np.random.rand(1) + r2)
         y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
         batch_data[i] = torch.cat([torch.from_numpy(y.real),torch.from_numpy(y.imag)])
 #         batch_data[i] = torch.cat([torch.from_numpy(np.abs(y))]).to(device)
@@ -460,7 +462,7 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
 print("building validation set")
 for i in range(0, valid_size, batch_size):
     #     mat_A = torch.rand(output_size, input_size).to(device)
-    batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
+    batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
     # print(batch_label.shape)
     # print("batch_data shape = " + str(batch_data.shape))
     # print("valid_data shape = " + str(valid_data.shape))
@@ -489,15 +491,17 @@ LOSS = MultiClassNLLCriterion()
 optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate'], \
                           alpha=0.9, eps=1e-05, weight_decay=optimState['weigthDecay'], momentum=0.0, centered=False)
 # scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15], gamma=0.25)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=4,
-                                                       verbose=True, threshold=0.0001, threshold_mode='rel', \
-                                                       cooldown=0, min_lr=0, eps=1e-08)
+# scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=4,
+#                                                        verbose=True, threshold=0.0001, threshold_mode='rel', \
+#                                                        cooldown=0, min_lr=0, eps=1e-08)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.5)
 # if torch.cuda.is_available():
 #     checkpoint = torch.load("/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
 # else:
 #     checkpoint = torch.load("./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
 # net.load_state_dict(checkpoint['model_state_dict'])
 # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+# scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 # epoch = checkpoint['epoch'] + 1
 # loss = checkpoint['loss']
 epoch = 0
@@ -505,7 +509,8 @@ print(net)
 print(device)
 # mat_A = torch.rand(output_size, input_size).to(device)
 for epoch in range(epoch, num_epochs):
-
+    for param_group in optimizer.param_groups:
+        print(param_group['lr'])
     # learing rate self - adjustment
     # if(epoch > 250):
     #     optimState['learningRate'] = base_lr / (1 + 0.06 * (epoch - base_epoch))
@@ -522,7 +527,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
+        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states).to(device)  # 0 or 1?!
@@ -587,7 +592,8 @@ for epoch in range(epoch, num_epochs):
         valid_accm = valid_accm + batch_accm
         valid_err = valid_err + err.item()
         nbatch = nbatch + 1
-    scheduler.step(valid_err / nbatch)
+#     scheduler.step(valid_err / nbatch)
+    scheduler.step()
     #         if (nbatch+99) % 100 == 0:
     #             print("Eval Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(batch_accs, batch_accl,
     #                                                                                             batch_accm, err.item()))
@@ -620,6 +626,7 @@ for epoch in range(epoch, num_epochs):
     checkpoint = {'epoch': epoch, \
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
+                  'scheduler_state_dict': scheduler.state_dict(), \
                   'loss': err.item()}
     if torch.cuda.is_available():
         torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
