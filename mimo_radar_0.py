@@ -29,8 +29,8 @@ y_r=np.array([500,500,1000,2000,2500,2500,2000,1500])#+500*(np.random.rand(N)-0.
 x_t=np.array([0,4000,4000,0,1500,0,4000,2000])
 y_t=np.array([0,0,4000,4000,4000,1500,1500,0])
 
-NOISE = 0  #on/off noise
-H = 0      #on/off êîýôôèöèåíòû îòðàæåíèÿ
+NOISE = 1  #on/off noise
+H = 1      #on/off êîýôôèöèåíòû îòðàæåíèÿ
 rk = np.zeros([K,M,N]);
 tk = np.zeros([K,M,N]);
 tau = np.zeros([K,M,N]);
