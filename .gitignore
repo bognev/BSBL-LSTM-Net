@@ -3,5 +3,6 @@
 *.mat
 *.gv
 *.png
+*.pth
 
 .gitignore

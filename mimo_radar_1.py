@@ -12,39 +12,39 @@ T=400
 SNR_dB=15
 DB=10.**(0.1*SNR_dB)
 
-N=8 #the number of receivers
-M=3 #the number of transmitters
+N=2 #the number of receivers
+M=2 #the number of transmitters
 
-K=1 #the number of targets
+K=2 #the number of targets
 # np.random.seed(15)
 #Position of receivers
-x_r=np.array([1000,2000,2500,2500,2000,1000,500,500])#+500*(np.random.rand(N)-0.5))#\
+x_r=np.array([1000,2000,2500,2500,2000,1000,500,500])+11#+500*(np.random.rand(N)-0.5))#\
     # 1500,3000,500,2500,1000,1500,500,3000,\
     # 2500,3500,1000,3500,2000,4000,3000,3000]+500*(np.random.rand(N)-0.5))
-y_r=np.array([500,500,1000,2000,2500,2500,2000,1500])#+500*(np.random.rand(N)-0.5))#\
+y_r=np.array([500,500,1000,2000,2500,2500,2000,1500])+11#+500*(np.random.rand(N)-0.5))#\
      # 3500,3500,500,4000,4000,2500,3000,500,\
      # 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
 
 #Position of transmitters
-x_t=np.array([0,4000,4000,0,1500,0,4000,2000])
-y_t=np.array([0,0,4000,4000,4000,1500,1500,0])
+x_t=np.array([0,4000,4000,0,1500,0,4000,2000])+11
+y_t=np.array([0,0,4000,4000,4000,1500,1500,0])+11
 
 NOISE = 1  #on/off noise
-H = 1      #on/off êîýôôèöèåíòû îòðàæåíèÿ
+H = 0      #on/off êîýôôèöèåíòû îòðàæåíèÿ
 rk = np.zeros([K,M,N]);
 tk = np.zeros([K,M,N]);
 tau = np.zeros([K,M,N]);
 if H == 0:
-    h=np.ones([K,M,N])
+    h=np.ones([K,M,N])+1j*np.ones([K,M,N])
 else:
     h=(np.random.randn(K,M,N)+1j*np.random.randn(K,M,N))/np.sqrt(2)
 
 s=np.zeros([M,L])+1j*np.zeros([M,L])
 for m in range(M):
     s[m]=np.exp(1j*2*np.pi*(m)*np.arange(L)/M)/np.sqrt(L);#sqrt(0.5)*(randn(1,L)+1i*randn(1,L))/sqrt(L);
-Ls = 875
-Le = Ls+125*6
-dx = 125
+Ls = 10
+Le = Ls+6*250
+dx = 250
 dy = dx
 x_grid = np.arange(Ls,Le,dx)
 y_grid = np.arange(Ls,Le,dy)
@@ -53,12 +53,17 @@ size_grid_y  = len(y_grid)
 grid_all_points = [[i, j] for i in x_grid for j in y_grid]
 r=np.zeros(size_grid_x*size_grid_y)
 k_random_grid_points = np.random.permutation(size_grid_x*size_grid_y)[range(K)]
+k_random_grid_points = np.array([11,22])
 #Position of targets
 x_k=np.zeros([K])
 y_k=np.zeros([K])
-for kk in range(K):
-    x_k[kk]=grid_all_points[k_random_grid_points.item(kk)][0]
-    y_k[kk]=grid_all_points[k_random_grid_points.item(kk)][1]
+# for kk in range(K):
+#     x_k[kk]=grid_all_points[k_random_grid_points.item(kk)][0]
+    # y_k[kk]=grid_all_points[k_random_grid_points.item(kk)][1]
+x_k[0]=grid_all_points[11][0]
+y_k[0]=grid_all_points[11][1]
+x_k[1]=grid_all_points[22][0]
+y_k[1]=grid_all_points[22][1]
 r[k_random_grid_points] = 1
 
 #Time delays
@@ -122,9 +127,9 @@ for xx in np.arange(size_grid_x):
         for m in np.arange(M):
             for n in np.arange(N):
                 l=np.floor(tau_grid_c[xx,yy,n,m]/dt)
-                dictionary[m,n,np.arange(l,l+L,dtype = np.integer),xx,yy] = s[m,:].transpose()*\
-                                                                                np.sqrt(200000000000)*\
-                                                                                (1/tk[k,m,n])*(1/rk[k,m,n])
+                dictionary[m,n,np.arange(l,l+L,dtype = np.integer),xx,yy] = s[m,:].transpose()#*\
+                                                                                #np.sqrt(200000000000)*\
+                                                                                #(1/tk[k,m,n])*(1/rk[k,m,n])
 
 D_flat = np.zeros([N*T,N*size_grid_x*size_grid_y*M]) + 1j*np.zeros([N*T,N*size_grid_x*size_grid_y*M])
 i=0
@@ -135,31 +140,45 @@ for m in range(M):
                 D_flat[range(n*T,(n+1)*T),i]= np.squeeze(dictionary[m,n,range(T),xx,yy])
                 i += 1
 from gen_mimo_samples import gen_mimo_samples
-y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
+y, label, r_glob2 = gen_mimo_samples(1, 15*np.ones(K), M, N, K, NOISE, H)
 print(label)
 
 #group lasso
 lambdas = cp.Parameter(nonneg=True)
-lambdas.value = 1
+lambdas.value = 10
 # Define problem
-x = cp.Variable(size_grid_x*size_grid_y*M*N,complex=True)
+xx = cp.Variable(size_grid_x*size_grid_y*M*N,complex=True)
+xx2 = cp.Variable(size_grid_x*size_grid_y*M*N,complex=True)
 p = cp.Variable(1)
 q = cp.Variable(1)
 objective = 0.5*p**2+lambdas*q
 
 a = []
 for ii in range(size_grid_x*size_grid_y):
-    a.append(cp.norm(x[range(ii,size_grid_x*size_grid_y*M*N,size_grid_x*size_grid_y)],2))
+    a.append(cp.norm(xx[ii:size_grid_x*size_grid_y:size_grid_x*size_grid_y*M*N],2))
 
-constr = [cp.norm(y-D_flat@x,2) <= p, sum(a) <= q]
+b = []
+for ii in range(size_grid_x*size_grid_y):
+    b.append(cp.norm(xx2[ii:size_grid_x*size_grid_y:size_grid_x*size_grid_y*M*N],2))
+
+constr = [cp.norm(x_flat-D_flat@xx,2) <= p, sum(a) <= q]
+constr2 = [cp.norm(y.reshape(N*T,)-D_flat@xx2,2) <= p, sum(b) <= q]
 prob = cp.Problem(cp.Minimize(objective), constr)
+prob2 = cp.Problem(cp.Minimize(objective), constr2)
 prob.solve()
+prob2.solve()
 
 plt.figure(2)
-plt.subplot(211)
-plt.plot(np.abs(rr_glob), lw=2)
+plt.subplot(411)
+plt.plot(np.abs(r_glob2.transpose()), lw=2)
 plt.grid(True)
-plt.subplot(212)
-plt.plot(np.abs(x.value), lw=2)
+plt.subplot(412)
+plt.plot(np.abs(r_glob), lw=2)
+plt.grid(True)
+plt.subplot(413)
+plt.plot(np.real(xx.value), lw=2)
+plt.grid(True)
+plt.subplot(414)
+plt.plot(np.real(xx2.value), lw=2)
 plt.grid(True)
 plt.show()

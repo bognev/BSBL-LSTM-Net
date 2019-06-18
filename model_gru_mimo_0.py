@@ -10,7 +10,7 @@ import numpy as np
 # from graphviz import Source
 
 import time
-HOME = 1
+HOME = 0
 if torch.cuda.is_available() and HOME == 0:
     from google.colab import drive
     drive.mount("/content/gdrive", force_remount=True)
@@ -448,7 +448,7 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
     for i in range(batch_size):
         # SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
         for k in range(K):
-            SNR_dB[k] = 10  # ((r1 - r2) * np.random.rand(1) + r2)
+            SNR_dB[k] = 20  # ((r1 - r2) * np.random.rand(1) + r2)
         y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
         batch_data[i] = torch.cat([torch.from_numpy(y.real),torch.from_numpy(y.imag)])
 #         batch_data[i] = torch.cat([torch.from_numpy(np.abs(y))]).to(device)
@@ -462,7 +462,7 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
 print("building validation set")
 for i in range(0, valid_size, batch_size):
     #     mat_A = torch.rand(output_size, input_size).to(device)
-    batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
+    batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
     # print(batch_label.shape)
     # print("batch_data shape = " + str(batch_data.shape))
     # print("valid_data shape = " + str(valid_data.shape))
@@ -495,16 +495,16 @@ optimizer = optim.RMSprop(params=net.parameters(), lr=optimState['learningRate']
 #                                                        verbose=True, threshold=0.0001, threshold_mode='rel', \
 #                                                        cooldown=0, min_lr=0, eps=1e-08)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=8, gamma=0.5)
-# if torch.cuda.is_available():
-#     checkpoint = torch.load("/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
-# else:
-#     checkpoint = torch.load("./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
-# net.load_state_dict(checkpoint['model_state_dict'])
-# optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-# scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-# epoch = checkpoint['epoch'] + 1
-# loss = checkpoint['loss']
-epoch = 0
+if torch.cuda.is_available():
+    checkpoint = torch.load("/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+else:
+    checkpoint = torch.load("./" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
+net.load_state_dict(checkpoint['model_state_dict'])
+optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+epoch = checkpoint['epoch'] + 1
+loss = checkpoint['loss']
+# epoch = 0
 print(net)
 print(device)
 # mat_A = torch.rand(output_size, input_size).to(device)
@@ -527,7 +527,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
+        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states).to(device)  # 0 or 1?!

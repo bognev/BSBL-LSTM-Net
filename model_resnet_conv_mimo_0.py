@@ -10,12 +10,17 @@ import numpy as np
 # from graphviz import Source
 
 import time
+
 HOME = 0
+c = 3 * 10 ** 8
+dt = 10 ** (-7)
+Ts = 0.8000e-06
+L = int(Ts / dt)
+T = 400
+
 # if torch.cuda.is_available() and HOME == 0:
 #     from google.colab import drive
 #     drive.mount("/content/gdrive", force_remount=True)
-
-
 
 
 class BuildResNetStack(nn.Module):
@@ -28,15 +33,17 @@ class BuildResNetStack(nn.Module):
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
-        self.conv1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels, kernel_size=self.kernel_size, stride=self.stride, \
+        self.conv1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels,
+                                     kernel_size=self.kernel_size, stride=self.stride, \
                                      padding=self.padding, dilation=1, groups=1)
         self.conv1x1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels,
-                                     kernel_size=1, stride=self.stride, \
-                                     padding=0, dilation=1, groups=1)
+                                       kernel_size=1, stride=self.stride, \
+                                       padding=0, dilation=1, groups=1)
         self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
-        self.bn = nn.BatchNorm1d(self.out_channels)#, self.output_size)
+        self.bn = nn.BatchNorm1d(self.out_channels)  # , self.output_size)
         self.relu1 = nn.ReLU()
-        self.conv2 = torch.nn.Conv1d(in_channels=self.out_channels, out_channels=self.out_channels, kernel_size=self.kernel_size, stride=self.stride, \
+        self.conv2 = torch.nn.Conv1d(in_channels=self.out_channels, out_channels=self.out_channels,
+                                     kernel_size=self.kernel_size, stride=self.stride, \
                                      padding=self.padding, dilation=1, groups=1)
         self.maxpool = torch.nn.MaxPool1d(kernel_size=2, stride=None, padding=0, dilation=1, return_indices=False,
                                           ceil_mode=False)
@@ -48,11 +55,12 @@ class BuildResNetStack(nn.Module):
         self.x = self.bn(self.x)
         self.x = self.relu1(self.x)
         # self.x = self.maxpool(self.x)
-        #print(self.x.shape)
+        # print(self.x.shape)
         self.x = self.conv1x1(x) + self.conv2(self.x)
         self.x = self.relu2(self.x)
         self.x = self.maxpool(self.x)
         return self.x
+
 
 class BuildResNetStackInterm(nn.Module):
 
@@ -62,11 +70,12 @@ class BuildResNetStackInterm(nn.Module):
         self.input_size = input_size
         self.fc_size = fc_size
         # self.fc_in = nn.Linear(self.input_size,self.input_size)
-        self.conv1 = torch.nn.Conv1d(in_channels=self.N, out_channels=4*self.N, kernel_size=19, stride=2, \
+        self.conv1 = torch.nn.Conv1d(in_channels=self.N, out_channels=4 * self.N, kernel_size=19, stride=2, \
                                      padding=9, dilation=1, groups=1)
-        self.bn = nn.BatchNorm1d(4*self.N, self.input_size)
+        self.bn = nn.BatchNorm1d(4 * self.N, self.input_size)
         self.relu = nn.ReLU()
-        self.fc_out = nn.ModuleList([nn.Linear(self.input_size,self.fc_size), nn.Linear(self.input_size,self.fc_size)])
+        self.fc_out = nn.ModuleList(
+            [nn.Linear(self.input_size, self.fc_size), nn.Linear(self.input_size, self.fc_size)])
 
     def forward(self, x):
         self.x = x
@@ -89,7 +98,7 @@ class BuildResNetUnrollNet(nn.Module):
         buildResNetstack_lst_in = []
         self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 8, 16, input_size, 19, 1, 9
         self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
-        self.output_size = self.output_size/2
+        self.output_size = self.output_size / 2
         print(self.output_size)
         buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
                                                         self.kernel_size, self.stride, self.padding))
@@ -106,7 +115,7 @@ class BuildResNetUnrollNet(nn.Module):
         self.output_size = self.output_size / 2
         print(self.output_size)
         buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
-                                                        self.kernel_size, self.stride,self.padding))
+                                                        self.kernel_size, self.stride, self.padding))
 
         self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 64, 128, self.output_size, 3, 1, 1
         self.output_size = (self.output_size - self.kernel_size + 2 * self.padding) / self.stride + 1
@@ -122,7 +131,6 @@ class BuildResNetUnrollNet(nn.Module):
         # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
         # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
         # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
-
 
         # self.l_ResNets_out = nn.ModuleList(buildResNetstack_lst_out)
 
@@ -158,16 +166,17 @@ class GetResNet(nn.Module):
                                      kernel_size=self.kernel_size, stride=self.stride, \
                                      padding=self.padding, dilation=1, groups=1)
         self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
-        self.l_bn_in = nn.BatchNorm1d(N)#, self.input_size)
+        self.l_bn_in = nn.BatchNorm1d(N)  # , self.input_size)
         self.l_ResNet = BuildResNetUnrollNet(N, self.num_unroll, self.input_size, self.fc_size)
-        self.l_fc_out = nn.Linear(int(self.num_unroll*2*self.num_unroll**2*self.input_size/self.num_unroll**2), self.fc_size)
+        self.l_fc_out = nn.Linear(
+            int(self.num_unroll * 2 * self.num_unroll ** 2 * self.input_size / self.num_unroll ** 2), self.fc_size)
 
     def forward(self, x):
         self.x = x
         self.x = self.conv1(self.x)
         self.x = self.l_bn_in(self.x)
         self.x = self.l_ResNet(self.x)
-        self.x = self.l_fc_out(self.x.view(self.x.shape[0],-1))
+        self.x = self.l_fc_out(self.x.view(self.x.shape[0], -1))
         return self.x
 
 
@@ -186,7 +195,6 @@ class GetResNet(nn.Module):
 # temp = make_dot(out, params=dict(list(model.named_parameters())+ [('x', x)]))
 # s = Source(temp, filename="test.gv", format="png")
 # s.view()
-
 
 
 class MultiClassNLLCriterion(torch.nn.Module):
@@ -269,8 +277,8 @@ K = 3  # the number of targets
 dataset = 'uniform'  # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), unit (+-1)
 # num_nonz = K*N*M*2  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
 num_nonz = K  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
-input_size = 400*2  # dimension of observation vector y
-output_size = 12*12  # dimension of sparse vector x
+input_size = T * 2  # dimension of observation vector y
+output_size = 13 * 13  # dimension of sparse vector x
 # # task related parameters
 # # task: y = Ax, given A recovery sparse x from y
 # dataset = 'uniform'  # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), unit (+-1)
@@ -302,8 +310,8 @@ print(device)
 # batch_label = torch.zeros(batch_size, num_nonz).to(device)  # for MultiClassNLLCriterion LOSS
 
 if torch.cuda.is_available() and HOME == 0:
-    train_size = int(256*800)  #
-    valid_size = int(256*200)  #
+    train_size = int(256 * 800)  #
+    valid_size = int(256 * 200)  #
 else:
     train_size = 256  # 600000  #
     valid_size = 32  # 100000  #
@@ -314,7 +322,6 @@ batch_data = torch.zeros(batch_size, N, input_size).to(device)
 batch_label = torch.zeros(batch_size, num_nonz).to(device)  # for MultiClassNLLCriterion LOSS
 batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device)  # init_states for GRU
 
-
 # AccM, AccL, Accs = 0, 0, 0
 
 
@@ -322,6 +329,8 @@ err = 0
 
 model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_ResNet_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
+
+
 # if torch.cuda.is_available() and HOME == 0:
 #      logger_file = "/content/gdrive/My Drive/" + logger_file  # or torch.save(net, PATH)
 # else:
@@ -339,7 +348,6 @@ logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
 # else:
 #     mat_A = torch.load("./mat_A.pt").to(device)
 # # mat_A = torch.load("/content/gdrive/My Drive/mat_A.pt").to(device)
-
 
 
 # def gen_batch(batch_size, num_nonz, mat_A):
@@ -374,11 +382,7 @@ logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
 #     # print(batch_data.shape)
 #     return batch_label, batch_data
 def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
-    c = 3 * 10 ** 8
-    dt = 10 ** (-7)
-    Ts = 0.8000e-06
-    L = int(Ts / dt)
-    T = 400
+
     DB = 10. ** (0.1 * SNR_dB)
 
     # N = 8  # the number of receivers
@@ -387,16 +391,16 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     # K = 1  # the number of targets
     # np.random.seed(15)
     # Position of receivers
-    x_r = np.array([1000, 2000, 2500, 2500, 2000, 1000, 500, 500])+550#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
+    x_r = np.array([1000, 2000, 2500, 2500, 2000, 1000, 500, 500])#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
     # 1500,3000,500,2500,1000,1500,500,3000,\
     # 2500,3500,1000,3500,2000,4000,3000,3000]+500*(np.random.rand(N)-0.5))
-    y_r = np.array([500, 500, 1000, 2000, 2500, 2500, 2000, 1500])+550#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
+    y_r = np.array([500, 500, 1000, 2000, 2500, 2500, 2000, 1500])#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
     # 3500,3500,500,4000,4000,2500,3000,500,\
     # 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
 
     # Position of transmitters
-    x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000])+550#+500*np.random.rand(1)
-    y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0])+550#+500*np.random.rand(1)
+    x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000])#+500*np.random.rand(1)
+    y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0])#+500*np.random.rand(1)
 
     # NOISE = 1  # on/off noise
     # H = 1  # on/off êîýôôèöèåíòû îòðàæåíèÿ
@@ -410,14 +414,14 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
 
     s = np.zeros([M, L]) + 1j * np.zeros([M, L])
     for m in range(M):
-        s[m] = np.exp(1j * 2 * np.pi * (m) * np.arange(L) / M) / np.sqrt(L);
-        # sqrt(0.5)*(randn(1,L)+1i*randn(1,L))/sqrt(L);
+        s[m] = np.exp(1j * 2 * np.pi * (m) * np.arange(L) / M) / np.sqrt(L);#np.sqrt(0.5)*(np.random.randn(1,L)+1j*np.random.randn(1,L))/np.sqrt(L);#
+        #
 #     Ls = 875
 #     Le = Ls + 125 * 6
 #     dx = 125
     Ls = 0
-    Le = Ls + 250 * 12
-    dx = 250
+    Le = Ls + 4000
+    dx = 333
     dy = dx
     dy = dx
     x_grid = np.arange(Ls, Le, dx)
@@ -425,16 +429,22 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     size_grid_x = len(x_grid)
     size_grid_y = len(y_grid)
     grid_all_points = [[i, j] for i in x_grid for j in y_grid]
+    grid_all_points_a = np.array(grid_all_points)
     r = np.zeros(size_grid_x * size_grid_y * M * N)
-    k_random_grid_points_i = np.random.permutation(size_grid_x * size_grid_y)[range(K)]
     k_random_grid_points = np.array([])
     # Position of targets
     x_k = np.zeros([K])
     y_k = np.zeros([K])
     for kk in range(K):
-        x_k[kk] = grid_all_points[k_random_grid_points_i.item(kk)][0]
-        y_k[kk] = grid_all_points[k_random_grid_points_i.item(kk)][1]
-
+        x_k[kk] = np.random.randint(Ls,Le)+np.random.rand(1)
+        y_k[kk] = np.random.randint(Ls,Le)+np.random.rand(1)
+    k_random_grid_points_i = np.array([])
+    k_random_grid_points = np.array([])
+    for k in range(K):
+        calc_dist = np.sqrt((grid_all_points_a[range(size_grid_x * size_grid_y), 0] - x_k[k]) ** 2 \
+                            + (grid_all_points_a[range(size_grid_x * size_grid_y), 1] - y_k[k]) ** 2)
+        # grid_all_points_a[calc_dist.argmin()]
+        k_random_grid_points_i = np.append(k_random_grid_points_i, calc_dist.argmin())
 
     # Time delays
     for k in range(K):
@@ -448,7 +458,7 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     for m in range(M):
         for n in range(N):
             for k in range(K):
-                r_glob[k_random_grid_points_i[k]] = DB[k] * h[k, m, n] * \
+                r_glob[k_random_grid_points_i[k].astype(int)] = DB[k] * h[k, m, n] * \
                                                   np.sqrt(200000000000) * (1 / tk[k, m, n]) * (1 / rk[k, m, n])
             k_random_grid_points = np.append(k_random_grid_points,k_random_grid_points_i)
             k_random_grid_points_i = k_random_grid_points_i + size_grid_x * size_grid_y
@@ -476,35 +486,37 @@ def gen_mimo_samples(SNR_dB, M, N, K, NOISE, H):
     #     x_flat = np.concatenate([x_flat, x[n, :].transpose()], axis=0)
 
     return x, r, r_glob, k_random_grid_points
+
+
 def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
-#     NOISE = 1
-#     H = 1
-#     SNR_dB = torch.randint(30,60,(1,)).item()
+    #     NOISE = 1
+    #     H = 1
+    #     SNR_dB = torch.randint(30,60,(1,)).item()
     SNR_dB = np.random.rand(3)
     y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
-    batch_data = torch.zeros(batch_size, N, 2*y.shape[1]).to(device)
-#     batch_label = torch.zeros(batch_size, 2*label.shape[0]).to(device)
+    batch_data = torch.zeros(batch_size, N, 2 * y.shape[1]).to(device)
+    #     batch_label = torch.zeros(batch_size, 2*label.shape[0]).to(device)
     batch_label = torch.zeros(batch_size, label[range(num_nonz)].shape[0]).to(device)
     r1 = 40
     r2 = 10
     for i in range(batch_size):
         # SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
         for k in range(K):
-            SNR_dB[k] = 10#((r1 - r2) * np.random.rand(1) + r2)
+            SNR_dB[k] = 20  # ((r1 - r2) * np.random.rand(1) + r2)
         y, rr, rr_glob, label = gen_mimo_samples(SNR_dB, M, N, K, NOISE, H)
-        batch_data[i,:,:] = torch.cat([torch.from_numpy(y.real),torch.from_numpy(y.imag)], dim=1).to(device)
-#         batch_data[i] = torch.cat([torch.from_numpy(np.abs(y))]).to(device)
-#         batch_label[i] = torch.cat([torch.from_numpy(label),torch.from_numpy(label+M*N*36)]).to(device)
+        batch_data[i, :, :] = torch.cat([torch.from_numpy(y.real), torch.from_numpy(y.imag)], dim=1).to(device)
+        #         batch_data[i] = torch.cat([torch.from_numpy(np.abs(y))]).to(device)
+        #         batch_label[i] = torch.cat([torch.from_numpy(label),torch.from_numpy(label+M*N*36)]).to(device)
         batch_label[i] = torch.cat([torch.from_numpy(label[range(num_nonz)])]).to(device)
 
-
     return batch_label.type(torch.LongTensor).to(device), batch_data
+
 
 print("building validation set")
 for i in range(0, valid_size, batch_size):
     #     mat_A = torch.rand(output_size, input_size).to(device)
     # batch_label, batch_data = gen_batch(batch_size, num_nonz, mat_A)
-    batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
+    batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
     # print(batch_label.shape)
     # print("batch_data shape = " + str(batch_data.shape))
     # print("valid_data shape = " + str(valid_data.shape))
@@ -531,18 +543,20 @@ net.to(device)
 # create a loss function
 LOSS = MultiClassNLLCriterion()
 optimizer = optim.SGD(params=net.parameters(), lr=optimState['learningRate'], \
-                          momentum=0.9, dampening=0, weight_decay=optimState['weigthDecay'], nesterov=False)
-scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,6,9,12,15], gamma=0.1)
+                      momentum=0.9, dampening=0, weight_decay=optimState['weigthDecay'], nesterov=False)
+scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[10, 20, 30, 40, 50], gamma=0.25)
 # checkpoint = torch.load( "/content/gdrive/My Drive/model_l_2t_17_rnn_800_3.pth")
 # net.load_state_dict(checkpoint['model_state_dict'])
 # optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+# scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 # epoch = checkpoint['epoch'] + 1
 # loss = checkpoint['loss']
 epoch = 0
 print(net)
 # mat_A = torch.rand(output_size, input_size).to(device)
 for epoch in range(epoch, num_epochs):
-
+    for param_group in optimizer.param_groups:
+        print(param_group['lr'])
     # learing rate self - adjustment
     # if(epoch > 250):
     #     optimState['learningRate'] = base_lr / (1 + 0.06 * (epoch - base_epoch))
@@ -559,7 +573,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
+        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 1, 1)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data).to(device)  # 0 or 1?!
@@ -584,12 +598,13 @@ for epoch in range(epoch, num_epochs):
         train_accm = train_accm + batch_accm
         train_err = train_err + err.item()
         nbatch = nbatch + 1
-        if(torch.cuda.is_available() and HOME == 0):
+        if (torch.cuda.is_available() and HOME == 0):
             if (nbatch) % 255 == 1:
-                print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(batch_accs,
-                                                                                                             batch_accl,
-                                                                                                             batch_accm,
-                                                                                                             err.item()))
+                print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(
+                    batch_accs,
+                    batch_accl,
+                    batch_accm,
+                    err.item()))
         else:
             print("Epoch " + str(epoch) + " Batch " + str(nbatch) + " {:.4} {:.4} {:.4} loss = {:.4}".format(batch_accs,
                                                                                                              batch_accl,
@@ -661,6 +676,7 @@ for epoch in range(epoch, num_epochs):
     checkpoint = {'epoch': epoch, \
                   'model_state_dict': net.state_dict(), \
                   'optimizer_state_dict': optimizer.state_dict(), \
+                  'scheduler_state_dict': scheduler.state_dict(), \
                   'loss': err.item()}
     # if torch.cuda.is_available() and HOME == 0:
     #     torch.save(checkpoint, "/content/gdrive/My Drive/" + model_all + "_" + str(num_nonz) + ".pth")  # or torch.save(net, PATH)
