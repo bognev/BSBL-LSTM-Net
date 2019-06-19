@@ -21,6 +21,9 @@ dt = 10 ** (-7)
 Ts = 0.8000e-06
 L = int(Ts / dt)
 T = 400
+NOISE = 0
+H = 0
+R = 0
 
 class BuildGRUStack(nn.Module):
 
@@ -276,7 +279,7 @@ dataset = 'uniform'  # type of non-zero elements: uniform ([-1,-0.1]U[0.1,1]), u
 # num_nonz = K*N*M*2  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
 num_nonz = K  # number of non-zero elemetns to recovery: 3,4,5,6,7,8,9,10
 input_size = T*2  # dimension of observation vector y
-output_size = 13*13  # dimension of sparse vector x
+output_size = 11*11  # dimension of sparse vector x
 
 # model hyper parameters
 rnn_size = 200  # number of units in RNN cell
@@ -327,40 +330,40 @@ logger = open(logger_file, 'w')
 # else:
 #     mat_A = torch.load("./mat_A.pt").to(device)
 
-x_r = np.array([1000, 2000, 2500, 2500, 2000, 1000, 500, 500])#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
-y_r = np.array([500, 500, 1000, 2000, 2500, 2500, 2000, 1500])#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
-# Position of transmitters
-x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000])#+500*np.random.rand(1)
-y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0])#+500*np.random.rand(1)
-x_r=x_r.reshape(8,1)
-y_r=y_r.reshape(8,1)
-x_t=x_t.reshape(8,1)
-y_t=y_t.reshape(8,1)
-# 1500,3000,500,2500,1000,1500,500,3000,\
-# 2500,3500,1000,3500,2000,4000,3000,3000]+500*(np.random.rand(N)-0.5))
-# 3500,3500,500,4000,4000,2500,3000,500,\
-# 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
-
-s = np.zeros([M, L]) + 1j * np.zeros([M, L])
-for m in range(M):
-    s[m] = np.exp(1j * 2 * np.pi * (m) * np.arange(L) / M) / np.sqrt(L);#np.sqrt(0.5)*(np.random.randn(1,L)+1j*np.random.randn(1,L))/np.sqrt(L);#
-Ls = 0
-Le = Ls + 4000
-dx = 333
-dy = dx
-dy = dx
-x_grid = np.arange(Ls, Le, dx)
-y_grid = np.arange(Ls, Le, dy)
-size_grid_x = len(x_grid)
-size_grid_y = len(y_grid)
-grid_all_points = [[i, j] for i in x_grid for j in y_grid]
-grid_all_points_a = np.array(grid_all_points)
 
 
-const_sqrt_200000000000 = np.sqrt(200000000000)
+def gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H, R):
+    x_r = np.array(
+        [1000, 2000, 2500, 2500, 2000, 1000, 500, 500]) + 128 # + 500 * (np.random.rand(N) - 0.5))  # \
+    y_r = np.array(
+        [500, 500, 1000, 2000, 2500, 2500, 2000, 1500]) + 128# + 500 * (np.random.rand(N) - 0.5))  # \
+    # Position of transmitters
+    x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000]) + 128
+    y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0]) + 128
+    x_r = x_r.reshape(8, 1)
+    y_r = y_r.reshape(8, 1)
+    x_t = x_t.reshape(8, 1)
+    y_t = y_t.reshape(8, 1)
+    # 1500,3000,500,2500,1000,1500,500,3000,\
+    # 2500,3500,1000,3500,2000,4000,3000,3000]+500*(np.random.rand(N)-0.5))
+    # 3500,3500,500,4000,4000,2500,3000,500,\
+    # 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
 
+    s = np.zeros([M, L]) + 1j * np.zeros([M, L])
+    for m in range(M):
+        s[m] = np.exp(1j * 2 * np.pi * (m) * np.arange(L) / M) / np.sqrt(L);  # np.sqrt(0.5)*(np.random.randn(1,L)+1j*np.random.randn(1,L))/np.sqrt(L);#
+    Ls = 0
+    Le = Ls + 1000
+    dx = 91
+    dy = dx
+    x_grid = np.arange(Ls, Le, dx)
+    y_grid = np.arange(Ls, Le, dy)
+    size_grid_x = len(x_grid)
+    size_grid_y = len(y_grid)
+    grid_all_points = [[i, j] for i in x_grid for j in y_grid]
+    grid_all_points_a = np.array(grid_all_points)
 
-def gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H):
+    const_sqrt_200000000000 = np.sqrt(200000000000)
     grid_all_points_bs = np.repeat(grid_all_points_a[np.newaxis, ...], batch_size, axis=0)
     x_r_bs = np.repeat(x_r[np.newaxis, ...], batch_size, axis=0)
     y_r_bs = np.repeat(y_r[np.newaxis, ...], batch_size, axis=0)
@@ -369,7 +372,7 @@ def gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H):
     rk = np.zeros([batch_size, K, M, N, 1]);
     tk = np.zeros([batch_size, K, M, N, 1]);
     tau = np.zeros([batch_size, K, M, N, 1]);
-    # r = np.zeros([batch_size, size_grid_x * size_grid_y])
+    r = np.zeros([batch_size, size_grid_x * size_grid_y])
     DB = 10. ** (0.1 * SNR_dB)
     # NOISE = 1  # on/off noise
     # H = 1  # on/off êîýôôèöèåíòû îòðàæåíèÿ
@@ -383,61 +386,68 @@ def gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H):
         h = (np.random.randn(batch_size, K, M, N) + 1j * np.random.randn(batch_size, K, M, N)) / np.sqrt(2)
 
 
-    k_random_grid_points = np.array([])
+    k_random_grid_points = np.zeros([batch_size,K])
     # Position of targets
-    x_k = np.random.randint(Ls,Le,(batch_size,K,1))+np.random.rand(batch_size,K,1)
-    y_k = np.random.randint(Ls,Le,(batch_size,K,1))+np.random.rand(batch_size,K,1)
-    k_random_grid_points_i = np.zeros([batch_size,K])
-    # k_random_grid_points = np.array([])
-    for k in range(K):
-        calc_dist = np.sqrt((grid_all_points_bs[:,range(size_grid_x * size_grid_y), 0] - x_k[:,k]) ** 2 \
-                            + (grid_all_points_bs[:,range(size_grid_x * size_grid_y), 1] - y_k[:,k]) ** 2)
-        # grid_all_points_a[calc_dist.argmin()]
-        k_random_grid_points_i[:,k] = calc_dist.argmin(axis=1)
+    # a=np.random.randint(0,size_grid_x*size_grid_y,K)
+    a = np.random.randint(0, size_grid_x * size_grid_y, (batch_size, K, 1))
+    if R == 0:
+        x_k = grid_all_points_a[a[:,:,0]][:,:,0].reshape((batch_size,K,1))
+        y_k = grid_all_points_a[a[:,:,0]][:,:,1].reshape((batch_size,K,1))
+    else:
+        x_k = np.random.randint(Ls,Le,(batch_size,K,1))+np.random.rand(batch_size,K,1)
+        y_k = np.random.randint(Ls,Le,(batch_size,K,1))+np.random.rand(batch_size,K,1)
 
+    # print(a[100])
+    # print(x_k[100].transpose())
+    # print(y_k[100].transpose())
+    k_random_grid_points_i = np.zeros([batch_size,K])
+
+    for k in range(K):
+        calc_dist = np.sqrt((grid_all_points_bs[:,:, 0] - x_k[:,k]) ** 2 \
+                            + (grid_all_points_bs[:,:, 1] - y_k[:,k]) ** 2)
+        k_random_grid_points_i[:,k] = calc_dist.argmin(axis=1)
     # Time delays
     for k in range(K):
         for m in range(M):
             for n in range(N):
-                tk[:, k, m, n] = np.sqrt((x_k[:, k] - x_t_bs[:, m]) ** 2 + (y_k[:, k] - y_t_bs[:, m]) ** 2)
-                rk[:, k, m, n] = np.sqrt((x_k[:, k] - x_r_bs[:, n]) ** 2 + (y_k[:, k] - y_r_bs[:, n]) ** 2)
+                tk[:, k, m, n] = np.sqrt((x_k[:,k] - x_t_bs[:, m]) ** 2 + (y_k[:,k] - y_t_bs[:, m]) ** 2)
+                rk[:, k, m, n] = np.sqrt((x_k[:,k] - x_r_bs[:, n]) ** 2 + (y_k[:,k] - y_r_bs[:, n]) ** 2)
                 tau[:, k, m, n] = (tk[:, k, m, n] + rk[:, k, m, n]) / c
 
-    # r_glob = np.zeros([size_grid_x * size_grid_y * M * N]) + 1j * np.zeros([size_grid_x * size_grid_y * M * N])
-    # for m in range(M):
-    #     for n in range(N):
-    #         for k in range(K):
-    #             r_glob[k_random_grid_points_i[k].astype(int)] = DB[k] * h[k, m, n] * \
-    #                                               np.sqrt(200000000000) * (1 / tk[k, m, n]) * (1 / rk[k, m, n])
-    #         k_random_grid_points = np.append(k_random_grid_points,k_random_grid_points_i)
-    #         k_random_grid_points_i = k_random_grid_points_i + size_grid_x * size_grid_y
-
-    # for m in range(M):
-    #     for n in range(N):
-    #         k_random_grid_points = np.append(k_random_grid_points,k_random_grid_points[-1] + size_grid_x * size_grid_y)
+    r_glob = np.zeros([batch_size, size_grid_x * size_grid_y * M * N]) + 1j * np.zeros([batch_size, size_grid_x * size_grid_y * M * N])
+    k_random_grid_points = np.array(k_random_grid_points_i,copy=True)
+    # print(k_random_grid_points[100])
+    # print(grid_all_points_bs[100,k_random_grid_points[100].astype(int)].transpose())
+    for bs in range(batch_size):
+        for m in range(M):
+            for n in range(N):
+                for k in range(K):
+                    r_glob[bs, k_random_grid_points_i[bs,k].astype(int)] = DB[k] * h[bs, k, m, n] * \
+                                                                           np.sqrt(200000000000) * (1 / tk[bs, k, m, n]) * (1 / rk[bs, k, m, n])
+                k_random_grid_points_i[bs,:] = k_random_grid_points_i[bs,:] + size_grid_x * size_grid_y
 
 
     # np.put(r, k_random_grid_points_i.astype(int), 1)
 
-    l = np.round(tau / dt).astype(int)
+    l = np.floor(tau / dt).astype(int)
     for bs in range(batch_size):
         for k in range(K):
             for n in range(N):
                 for m in range(M):
-                    x[:, n, l[bs,k,m,n].item(): l[bs,k,m,n].item() + L] = x[:, n, l[bs,k,m,n].item(): l[bs,k,m,n].item() + L] + DB[k] * s[m, :] * h[bs, k, m, n] * \
+                    x[bs, n, l[bs,k,m,n].item(): l[bs,k,m,n].item() + L] = x[bs, n, l[bs,k,m,n].item(): l[bs,k,m,n].item() + L] + DB[k] * s[m, :] * h[bs, k, m, n] * \
                                              const_sqrt_200000000000 * (1 / tk[bs, k, m, n]) * (1 / rk[bs, k, m, n])
 
-    # x_flat = x[0, :].transpose();
-    # for n in range(1, N):
-    #     x_flat = np.concatenate([x_flat, x[n, :].transpose()], axis=1)
+    x_flat = x[:, 0, :];
+    for n in range(1, N):
+        x_flat = np.concatenate([x_flat, x[:, n, :]], axis=1)
 
-    return x, k_random_grid_points_i
+    return x, k_random_grid_points, r_glob
 
-def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
+def gen_batch(batch_size, N, M, K, NOISE, H, R):
 #     NOISE = 1
 #     H = 1
     SNR_dB = np.random.rand(3)
-    y, label = gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H)
+    y, label, numb = gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H, R)
     batch_data = torch.zeros(batch_size, 2*y.shape[0])
 #     batch_label = torch.zeros(batch_size, 2*label.shape[0]).to(device)
     batch_label = torch.zeros(batch_size, label[range(num_nonz)].shape[0])
@@ -447,7 +457,7 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
         # SNR_dB = ((r1 - r2) * torch.rand((1,)) + r2).item()
     for k in range(K):
         SNR_dB[k] = 20  # ((r1 - r2) * np.random.rand(1) + r2)
-    y, label = gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H)
+    y, label, numb = gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H, R)
     batch_data = torch.cat([torch.from_numpy(y.real),torch.from_numpy(y.imag)], dim=2)
 #         batch_data[i] = torch.cat([torch.from_numpy(np.abs(y))]).to(device)
 #         batch_label[i] = torch.cat([torch.from_numpy(label),torch.from_numpy(label+M*N*36)]).to(device)
@@ -460,7 +470,7 @@ def gen_batch(batch_size, num_nonz, N, M, K, NOISE, H):
 print("building validation set")
 for i in range(0, valid_size, batch_size):
     #     mat_A = torch.rand(output_size, input_size).to(device)
-    batch_label, batch_data = gen_batch(2, num_nonz, N, M, K, 1, 1)
+    batch_label, batch_data = gen_batch(batch_size, N, M, K, NOISE, H, R)
     # print(batch_label.shape)
     # print("batch_data shape = " + str(batch_data.shape))
     # print("valid_data shape = " + str(valid_data.shape))
@@ -504,6 +514,7 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.25)
 # loss = checkpoint['loss']
 epoch = 0
 print(net)
+print(sum(p.numel() for p in net.parameters() if p.requires_grad))
 print(device)
 # mat_A = torch.rand(output_size, input_size).to(device)
 for epoch in range(epoch, num_epochs):
@@ -525,7 +536,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
+        batch_label, batch_data = gen_batch(batch_size, N, M, K, NOISE, H, R)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states).to(device)  # 0 or 1?!
