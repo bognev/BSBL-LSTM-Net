@@ -17,9 +17,9 @@ dt = 10 ** (-7)
 Ts = 1.6000e-06
 L = int(Ts / dt)
 T = 400
-NOISE = 0
+NOISE = 1
 H = 0
-R = 0
+R = 1
 
 # if torch.cuda.is_available() and HOME == 0:
 #     from google.colab import drive
@@ -615,7 +615,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, num_nonz, N, M, K, 0, 0)
+        batch_label, batch_data = gen_batch(batch_size, M, N, K, 0, 0, 1) #NOISE, H, R)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data).to(device)  # 0 or 1?!

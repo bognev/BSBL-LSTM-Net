@@ -10,7 +10,7 @@ import numpy as np
 # from graphviz import Source
 
 import time
-HOME = 1
+HOME = 0
 if torch.cuda.is_available() and HOME == 0:
     from google.colab import drive
     drive.mount("/content/gdrive", force_remount=True)
@@ -18,12 +18,12 @@ if torch.cuda.is_available() and HOME == 0:
 
 c = 3 * 10 ** 8
 dt = 10 ** (-7)
-Ts = 0.8000e-06
+Ts = 1.6000e-06
 L = int(Ts / dt)
 T = 400
-NOISE = 0
+NOISE = 1
 H = 0
-R = 0
+R = 1
 
 class BuildGRUStack(nn.Module):
 
@@ -330,6 +330,19 @@ logger = open(logger_file, 'w')
 # else:
 #     mat_A = torch.load("./mat_A.pt").to(device)
 
+x_r = np.array([1000, 2000, 2500, 2500, 2000, 1000, 500, 500])#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
+y_r = np.array([500, 500, 1000, 2000, 2500, 2500, 2000, 1500])#*np.random.rand(1)# + 500 * (np.random.rand(N) - 0.5))  # \
+# Position of transmitters
+x_t = np.array([0, 4000, 4000, 0, 1500, 0, 4000, 2000])#+500*np.random.rand(1)
+y_t = np.array([0, 0, 4000, 4000, 4000, 1500, 1500, 0])#+500*np.random.rand(1)
+x_r=x_r.reshape(8,1)
+y_r=y_r.reshape(8,1)
+x_t=x_t.reshape(8,1)
+y_t=y_t.reshape(8,1)
+# 1500,3000,500,2500,1000,1500,500,3000,\
+# 2500,3500,1000,3500,2000,4000,3000,3000]+500*(np.random.rand(N)-0.5))
+# 3500,3500,500,4000,4000,2500,3000,500,\
+# 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
 
 
 def gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H, R):
@@ -514,8 +527,8 @@ scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.25)
 # loss = checkpoint['loss']
 epoch = 0
 print(net)
-print(sum(p.numel() for p in net.parameters() if p.requires_grad))
 print(device)
+print(sum(p.numel() for p in net.parameters() if p.requires_grad))
 # mat_A = torch.rand(output_size, input_size).to(device)
 for epoch in range(epoch, num_epochs):
     for param_group in optimizer.param_groups:
@@ -536,7 +549,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, N, M, K, NOISE, H, R)
+        batch_label, batch_data = gen_batch(batch_size, N, M, K, 0, 0, 1)#NOISE, H, R)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states).to(device)  # 0 or 1?!
