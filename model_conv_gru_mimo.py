@@ -25,11 +25,126 @@ R = 1
 #     from google.colab import drive
 #     drive.mount("/content/gdrive", force_remount=True)
 
+class BuildGRUStack(nn.Module):
 
-class BuildResNetStack(nn.Module):
+    def __init__(self, input_size, rnn_size, num_layers):
+        super(BuildGRUStack, self).__init__()
+
+        self.input_size = input_size
+        self.rnn_size = rnn_size
+        self.num_layers = num_layers
+        l_i2h_lst = [nn.Linear(self.input_size, 3 * self.rnn_size)]
+        l_h2h_lst = [nn.Linear(self.rnn_size, 3 * self.rnn_size)]
+#         l_bn_lst = [nn.BatchNorm1d(3 * self.rnn_size)]
+#         self.l_do = nn.Dropout(0.25)
+        for L in range(1, self.num_layers):
+            l_i2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
+            l_h2h_lst.append(nn.Linear(self.rnn_size, 3 * self.rnn_size))
+#             l_bn_lst.append(nn.BatchNorm1d(3 * self.rnn_size))
+        self.l_i2h = nn.ModuleList(l_i2h_lst)
+        self.l_h2h = nn.ModuleList(l_h2h_lst)
+#         self.l_bn = nn.ModuleList(l_bn_lst)
+
+
+    def forward(self, x, prev_hs):
+        self.x_size = []
+        self.prev_h = 0
+        self.next_hs = []
+        self.i2h = []
+        self.h2h = []
+        for L in range(self.num_layers):
+            self.prev_h = prev_hs[L]
+            if L == 0:
+                self.x = x
+            else:
+                self.x = self.next_hs[L - 1]
+#             self.i2h.append(self.l_do(self.l_bn[L](self.l_i2h[L](self.x))))
+#             self.h2h.append(self.l_do(self.l_bn[L](self.l_h2h[L](self.prev_h))))
+            self.i2h.append(self.l_i2h[L](self.x))
+            self.h2h.append(self.l_h2h[L](self.prev_h))
+            Wx1, Wx2, Wx3 = self.i2h[L].chunk(3, dim=1) # it should return 4 tensors self.rnn_size
+            Uh1, Uh2, Uh3 = self.h2h[L].chunk(3, dim=1)
+            zt = torch.sigmoid(Wx1 + Uh1)
+            rt = torch.sigmoid(Wx2 + Uh2)
+            h_candidate = torch.tanh(Wx3 + rt * Uh3)
+            ht = (1-zt) * self.prev_h + zt * h_candidate
+            self.next_hs.append(ht)
+        return torch.stack(self.next_hs)
+
+
+class BuildGRUUnrollNet(nn.Module):
+
+    def __init__(self, num_unroll, num_layers, rnn_size, input_size):
+        super(BuildGRUUnrollNet, self).__init__()
+        self.num_unroll = num_unroll
+        self.num_layers = num_layers
+        self.rnn_size = rnn_size
+        self.input_size = input_size
+        self.outputs = []
+        self.output = []
+        self.now_h = []
+        self.buildGRUstack_lst = []
+        for i in range(0, self.num_unroll):
+            self.buildGRUstack_lst.append(BuildGRUStack(self.input_size, self.rnn_size, self.num_layers))
+        self.buildGRUstack = nn.ModuleList(self.buildGRUstack_lst)
+
+    def forward(self, x, init_states_input):
+
+        self.init_hs = []
+        self.now_hs = []
+        self.outputs = []
+
+        init_states = init_states_input.reshape((init_states_input.size(0), self.num_layers * 2, self.rnn_size))
+        init_states_lst = list(init_states.chunk(self.num_layers * 2, 1))
+
+        for i in range(self.num_layers):
+            self.init_hs.append(init_states_lst[2 * i].reshape(init_states_input.size(0), self.rnn_size))
+
+        self.now_hs.append(torch.stack(self.init_hs))
+
+        for i in range(self.num_unroll):
+            self.now_h = self.buildGRUstack[i](x[:, i, :], self.now_hs[i])
+            self.now_hs.append(self.now_h)
+            self.outputs.append(self.now_hs[i + 1][-1])
+            # for L in range(self.num_layers):
+            #     setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
+            #     setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
+        for i in range(1, self.num_unroll):
+            for j in range(self.num_layers):
+                self.buildGRUstack[i].l_i2h[j].weight.data = self.buildGRUstack[0].l_i2h[j].weight.data
+                self.buildGRUstack[i].l_h2h[j].weight.data = self.buildGRUstack[0].l_h2h[j].weight.data
+                self.buildGRUstack[i].l_i2h[j].bias.data = self.buildGRUstack[0].l_i2h[j].bias.data
+                self.buildGRUstack[i].l_h2h[j].bias.data = self.buildGRUstack[0].l_h2h[j].bias.data
+                self.buildGRUstack[i].l_i2h[j].weight.grad = self.buildGRUstack[0].l_i2h[j].weight.grad
+                self.buildGRUstack[i].l_h2h[j].weight.grad = self.buildGRUstack[0].l_h2h[j].weight.grad
+                self.buildGRUstack[i].l_i2h[j].bias.grad = self.buildGRUstack[0].l_i2h[j].bias.grad
+                self.buildGRUstack[i].l_h2h[j].bias.grad = self.buildGRUstack[0].l_h2h[j].bias.grad
+        self.output = self.outputs[0]
+        for i in range(1, self.num_unroll):
+            self.output = torch.cat((self.output, self.outputs[i]), 1)
+
+        return self.output
+
+
+class GetGRUNet(nn.Module):
+
+    def __init__(self, num_unroll, num_layers, rnn_size, output_size, input_size):
+        super(GetGRUNet, self).__init__()
+        self.num_unroll, self.num_layers, self.rnn_size, self.output_size, self.input_size = num_unroll, num_layers, rnn_size, output_size, input_size
+        self.l_pred_l = nn.Linear(self.num_unroll * self.rnn_size, self.output_size)
+        self.GRUnet = BuildGRUUnrollNet(self.num_unroll, self.num_layers, self.rnn_size, self.input_size)
+        self.l_pred_bn = nn.BatchNorm1d(self.output_size)
+        # setattr(self, 'GRUNetLinear', self.l_pred_l)
+
+    def forward(self, x, init_states_input):
+        self.GRU_output = self.GRUnet(x, init_states_input)
+        self.pred = self.l_pred_bn(self.l_pred_l(self.GRU_output))
+        return self.pred
+    
+class BuildConv1dStack(nn.Module):
 
     def __init__(self, in_channels, out_channels, input_size, kernel_size, stride, padding):
-        super(BuildResNetStack, self).__init__()
+        super(BuildConv1dStack, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.input_size = input_size
@@ -65,10 +180,10 @@ class BuildResNetStack(nn.Module):
         return self.x
 
 
-class BuildResNetStackInterm(nn.Module):
+class BuildConv1dStackInterm(nn.Module):
 
     def __init__(self, N, input_size, fc_size):
-        super(BuildResNetStackInterm, self).__init__()
+        super(BuildConv1dStackInterm, self).__init__()
         self.N = N
         self.input_size = input_size
         self.fc_size = fc_size
@@ -90,74 +205,74 @@ class BuildResNetStackInterm(nn.Module):
         return self.x
 
 
-class BuildResNetUnrollNet(nn.Module):
+class BuildConv1dUnrollNet(nn.Module):
 
     def __init__(self, N, num_unroll, input_size, fc_size):
-        super(BuildResNetUnrollNet, self).__init__()
+        super(BuildConv1dUnrollNet, self).__init__()
         self.N = N
         self.num_unroll = num_unroll
         self.fc_size = fc_size
 
-        buildResNetstack_lst_in = []
+        buildConv1dstack_lst_in = []
         self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 8, 16, input_size, 19, 1, 9
         self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
         self.output_size = self.output_size / 2
         print(self.output_size)
-        buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
+        buildConv1dstack_lst_in.append(BuildConv1dStack(self.in_channels, self.out_channels, self.input_size, \
                                                         self.kernel_size, self.stride, self.padding))
 
         self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 16, 32, self.output_size, 9, 1, 4
         self.output_size = (self.output_size - self.kernel_size + 2 * self.padding) / self.stride + 1
         self.output_size = self.output_size / 2
         print(self.output_size)
-        buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
+        buildConv1dstack_lst_in.append(BuildConv1dStack(self.in_channels, self.out_channels, self.input_size, \
                                                         self.kernel_size, self.stride, self.padding))
 
         self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 32, 64, self.output_size, 5, 1, 2
         self.output_size = (self.output_size - self.kernel_size + 2 * self.padding) / self.stride + 1
         self.output_size = self.output_size / 2
         print(self.output_size)
-        buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
+        buildConv1dstack_lst_in.append(BuildConv1dStack(self.in_channels, self.out_channels, self.input_size, \
                                                         self.kernel_size, self.stride, self.padding))
 
         self.in_channels, self.out_channels, self.input_size, self.kernel_size, self.stride, self.padding = 64, 128, self.output_size, 3, 1, 1
         self.output_size = (self.output_size - self.kernel_size + 2 * self.padding) / self.stride + 1
         self.output_size = self.output_size / 2
         print(self.output_size)
-        buildResNetstack_lst_in.append(BuildResNetStack(self.in_channels, self.out_channels, self.input_size, \
+        buildConv1dstack_lst_in.append(BuildConv1dStack(self.in_channels, self.out_channels, self.input_size, \
                                                         self.kernel_size, self.stride, self.padding))
 
-        self.l_ResNets_in = nn.ModuleList(buildResNetstack_lst_in)
-        # self.l_ResNets_imd = BuildResNetStackInterm(self.N, self.input_size, self.fc_size)
-        # buildResNetstack_lst_out = []
-        # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
-        # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
-        # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
-        # buildResNetstack_lst_in.append(BuildResNetStack(in_channels, out_channels, self.output_size, kernel_size, stride))
+        self.l_Conv1ds_in = nn.ModuleList(buildConv1dstack_lst_in)
+        # self.l_Conv1ds_imd = BuildConv1dStackInterm(self.N, self.input_size, self.fc_size)
+        # buildConv1dstack_lst_out = []
+        # buildConv1dstack_lst_in.append(BuildConv1dStack(in_channels, out_channels, self.output_size, kernel_size, stride))
+        # buildConv1dstack_lst_in.append(BuildConv1dStack(in_channels, out_channels, self.output_size, kernel_size, stride))
+        # buildConv1dstack_lst_in.append(BuildConv1dStack(in_channels, out_channels, self.output_size, kernel_size, stride))
+        # buildConv1dstack_lst_in.append(BuildConv1dStack(in_channels, out_channels, self.output_size, kernel_size, stride))
 
-        # self.l_ResNets_out = nn.ModuleList(buildResNetstack_lst_out)
+        # self.l_Conv1ds_out = nn.ModuleList(buildConv1dstack_lst_out)
 
     def forward(self, x):
         self.x = x
         for L in range(0, self.num_unroll):
-            self.x = self.l_ResNets_in[L](self.x)
+            self.x = self.l_Conv1ds_in[L](self.x)
             # print(self.x.shape)
         # print("a")
-        # self.x = self.l_ResNets_imd(self.x)
+        # self.x = self.l_Conv1ds_imd(self.x)
         # for L in range(0, self.num_unroll):
-        #     self.x = self.l_ResNets_out[L](self.x)
-        # self.res_out = [self.l_ResNets_out[0](self.res_int)]
+        #     self.x = self.l_Conv1ds_out[L](self.x)
+        # self.res_out = [self.l_Conv1ds_out[0](self.res_int)]
         # for L in range(0, self.num_unroll-1):
-        #     self.res_out.append(self.l_ResNets_out[L+1](self.res_out[L]))
+        #     self.res_out.append(self.l_Conv1ds_out[L+1](self.res_out[L]))
 
         return self.x
         # return self.res_out[-1]
 
 
-class GetResNet(nn.Module):
+class GetConv1d(nn.Module):
 
     def __init__(self, N, num_unroll, input_size, fc_size):
-        super(GetResNet, self).__init__()
+        super(GetConv1d, self).__init__()
         self.num_unroll, self.fc_size = num_unroll, fc_size
         self.in_channels = N
         self.out_channels = N
@@ -170,7 +285,7 @@ class GetResNet(nn.Module):
                                      padding=self.padding, dilation=1, groups=1)
         self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
         self.l_bn_in = nn.BatchNorm1d(N)  # , self.input_size)
-        self.l_ResNet = BuildResNetUnrollNet(N, self.num_unroll, self.input_size, self.fc_size)
+        self.l_Conv1d = BuildConv1dUnrollNet(N, self.num_unroll, self.input_size, self.fc_size)
         self.l_fc_out = nn.Linear(
             int(self.num_unroll * 2 * self.num_unroll ** 2 * self.input_size / self.num_unroll ** 2), self.fc_size)
 
@@ -178,7 +293,7 @@ class GetResNet(nn.Module):
         self.x = x
         self.x = self.conv1(self.x)
         self.x = self.l_bn_in(self.x)
-        self.x = self.l_ResNet(self.x)
+        self.x = self.l_Conv1d(self.x)
         self.x = self.l_fc_out(self.x.view(self.x.shape[0], -1))
         return self.x
 
@@ -190,7 +305,7 @@ class GetResNet(nn.Module):
 # rnn_size = 10
 # num_layers = 2
 # num_unroll = 4
-# model = GetResNet(8, 4, input_size, output_size)
+# model = GetConv1d(8, 4, input_size, output_size)
 # # graph of net
 # x = torch.rand(3, 8, input_size)
 # out = model(x)
@@ -330,7 +445,7 @@ batch_zero_states = torch.zeros(batch_size, num_layers * rnn_size * 2).to(device
 
 err = 0
 
-model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_ResNet_' + str(rnn_size)
+model_all = "model_l_" + str(num_layers) + "t_" + str(num_unroll) + '_Conv1d_' + str(rnn_size)
 logger_file = model_all + str(dataset) + "_" + str(num_nonz) + '.log'
 
 
@@ -571,7 +686,7 @@ base_epoch = lr_decay_startpoint
 base_lr = lr
 optimState = {'learningRate': 0.01, 'weigthDecay': 0.0001}
 
-net = GetResNet(N, num_unroll, input_size, output_size)
+net = GetConv1d(N, num_unroll, input_size, output_size)
 # print(net)
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)
