@@ -103,22 +103,22 @@ class BuildGRUUnrollNet(nn.Module):
         self.now_hs.append(torch.stack(self.init_hs))
 
         for i in range(self.num_unroll):
-            self.now_h = self.buildGRUstack[i](x[:, i, :], self.now_hs[i])
+            self.now_h = self.buildGRUstack[i](x, self.now_hs[i])
             self.now_hs.append(self.now_h)
             self.outputs.append(self.now_hs[i + 1][-1])
             # for L in range(self.num_layers):
             #     setattr(self, 'hid_%d_%d' %(i, L), self.now_hs[i][L])
             #     setattr(self, 'cell_%d_%d' %(i, L), self.now_cs[i][L])
-        for i in range(1, self.num_unroll):
-            for j in range(self.num_layers):
-                self.buildGRUstack[i].l_i2h[j].weight.data = self.buildGRUstack[0].l_i2h[j].weight.data
-                self.buildGRUstack[i].l_h2h[j].weight.data = self.buildGRUstack[0].l_h2h[j].weight.data
-                self.buildGRUstack[i].l_i2h[j].bias.data = self.buildGRUstack[0].l_i2h[j].bias.data
-                self.buildGRUstack[i].l_h2h[j].bias.data = self.buildGRUstack[0].l_h2h[j].bias.data
-                self.buildGRUstack[i].l_i2h[j].weight.grad = self.buildGRUstack[0].l_i2h[j].weight.grad
-                self.buildGRUstack[i].l_h2h[j].weight.grad = self.buildGRUstack[0].l_h2h[j].weight.grad
-                self.buildGRUstack[i].l_i2h[j].bias.grad = self.buildGRUstack[0].l_i2h[j].bias.grad
-                self.buildGRUstack[i].l_h2h[j].bias.grad = self.buildGRUstack[0].l_h2h[j].bias.grad
+        # for i in range(1, self.num_unroll):
+        #     for j in range(self.num_layers):
+        #         self.buildGRUstack[i].l_i2h[j].weight.data = self.buildGRUstack[0].l_i2h[j].weight.data
+        #         self.buildGRUstack[i].l_h2h[j].weight.data = self.buildGRUstack[0].l_h2h[j].weight.data
+        #         self.buildGRUstack[i].l_i2h[j].bias.data = self.buildGRUstack[0].l_i2h[j].bias.data
+        #         self.buildGRUstack[i].l_h2h[j].bias.data = self.buildGRUstack[0].l_h2h[j].bias.data
+        #         self.buildGRUstack[i].l_i2h[j].weight.grad = self.buildGRUstack[0].l_i2h[j].weight.grad
+        #         self.buildGRUstack[i].l_h2h[j].weight.grad = self.buildGRUstack[0].l_h2h[j].weight.grad
+        #         self.buildGRUstack[i].l_i2h[j].bias.grad = self.buildGRUstack[0].l_i2h[j].bias.grad
+        #         self.buildGRUstack[i].l_h2h[j].bias.grad = self.buildGRUstack[0].l_h2h[j].bias.grad
         self.output = self.outputs[0]
         for i in range(1, self.num_unroll):
             self.output = torch.cat((self.output, self.outputs[i]), 1)
@@ -154,9 +154,9 @@ class BuildConv1dStack(nn.Module):
         self.conv1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels,
                                      kernel_size=self.kernel_size, stride=self.stride, \
                                      padding=self.padding, dilation=1, groups=1)
-        self.conv1x1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels,
-                                       kernel_size=1, stride=self.stride, \
-                                       padding=0, dilation=1, groups=1)
+        # self.conv1x1 = torch.nn.Conv1d(in_channels=self.in_channels, out_channels=self.out_channels,
+        #                                kernel_size=1, stride=self.stride, \
+        #                                padding=0, dilation=1, groups=1)
         self.output_size = (self.input_size - self.kernel_size + 2 * self.padding) / self.stride + 1
         self.bn = nn.BatchNorm1d(self.out_channels)  # , self.output_size)
         self.relu1 = nn.ReLU()
@@ -174,8 +174,8 @@ class BuildConv1dStack(nn.Module):
         self.x = self.relu1(self.x)
         # self.x = self.maxpool(self.x)
         # print(self.x.shape)
-        self.x = self.conv1x1(x) + self.conv2(self.x)
-        self.x = self.relu2(self.x)
+        # self.x = self.conv2(self.x)#self.conv1x1(x) +
+        # self.x = self.relu2(self.x)
         self.x = self.maxpool(self.x)
         return self.x
 
@@ -271,7 +271,7 @@ class BuildConv1dUnrollNet(nn.Module):
 
 class GetConv1d(nn.Module):
 
-    def __init__(self, N, num_unroll, input_size, fc_size):
+    def __init__(self, N, num_unroll, input_size, fc_size, rnn_size, output_size, batch_size):
         super(GetConv1d, self).__init__()
         self.num_unroll, self.fc_size = num_unroll, fc_size
         self.in_channels = N
@@ -288,12 +288,15 @@ class GetConv1d(nn.Module):
         self.l_Conv1d = BuildConv1dUnrollNet(N, self.num_unroll, self.input_size, self.fc_size)
         self.l_fc_out = nn.Linear(
             int(self.num_unroll * 2 * self.num_unroll ** 2 * self.input_size / self.num_unroll ** 2), self.fc_size)
+        self.n_gru = GetGRUNet(1, num_layers, int(rnn_size/4), output_size, input_size)
+        self.batch_zero_states = torch.zeros(batch_size, num_layers * int(rnn_size/4) * 2)
 
     def forward(self, x):
         self.x = x
-        self.x = self.conv1(self.x)
-        self.x = self.l_bn_in(self.x)
+        # self.x = self.conv1(self.x)
+        # self.x = self.l_bn_in(self.x)
         self.x = self.l_Conv1d(self.x)
+        self.x = self.n_gru(self.x, self.batch_zero_states)
         self.x = self.l_fc_out(self.x.view(self.x.shape[0], -1))
         return self.x
 
@@ -686,7 +689,7 @@ base_epoch = lr_decay_startpoint
 base_lr = lr
 optimState = {'learningRate': 0.01, 'weigthDecay': 0.0001}
 
-net = GetConv1d(N, num_unroll, input_size, output_size)
+net = GetConv1d(N, num_unroll, input_size, output_size, rnn_size, output_size, batch_size)
 # print(net)
 # device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(device)

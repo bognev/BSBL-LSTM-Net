@@ -495,7 +495,7 @@ print('done')
 best_valid_accs = 0
 base_epoch = lr_decay_startpoint
 base_lr = lr
-optimState = {'learningRate': 0.001, 'weigthDecay': 0.0001}
+optimState = {'learningRate': 0.01, 'weigthDecay': 0.001}
 
 net = GetGRUNet(num_unroll, num_layers, rnn_size, output_size, input_size)
 
@@ -549,7 +549,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, N, M, K, 0, 0, 1)#NOISE, H, R)
+        batch_label, batch_data = gen_batch(batch_size, N, M, K, NOISE, H, R)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data, batch_zero_states).to(device)  # 0 or 1?!

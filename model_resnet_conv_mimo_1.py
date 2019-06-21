@@ -48,8 +48,9 @@ class BuildResNetStack(nn.Module):
         self.conv2 = torch.nn.Conv1d(in_channels=self.out_channels, out_channels=self.out_channels,
                                      kernel_size=self.kernel_size, stride=self.stride, \
                                      padding=self.padding, dilation=1, groups=1)
-        self.maxpool = torch.nn.MaxPool1d(kernel_size=2, stride=None, padding=0, dilation=1, return_indices=False,
-                                          ceil_mode=False)
+        # self.maxpool = torch.nn.MaxPool1d(kernel_size=2, stride=None, padding=0, dilation=1, return_indices=False,
+        #                                   ceil_mode=False)
+        self.avgpool = torch.nn.AvgPool1d(kernel_size=2, stride=None, padding=0, ceil_mode=False, count_include_pad=True)
         self.relu2 = nn.ReLU()
 
     def forward(self, x):
@@ -61,7 +62,8 @@ class BuildResNetStack(nn.Module):
         # print(self.x.shape)
         self.x = self.conv1x1(x) + self.conv2(self.x)
         self.x = self.relu2(self.x)
-        self.x = self.maxpool(self.x)
+        # self.x = self.maxpool(self.x)
+        self.x = self.avgpool(self.x)
         return self.x
 
 
@@ -176,8 +178,8 @@ class GetResNet(nn.Module):
 
     def forward(self, x):
         self.x = x
-        self.x = self.conv1(self.x)
-        self.x = self.l_bn_in(self.x)
+        # self.x = self.conv1(self.x)
+        # self.x = self.l_bn_in(self.x)
         self.x = self.l_ResNet(self.x)
         self.x = self.l_fc_out(self.x.view(self.x.shape[0], -1))
         return self.x
@@ -398,23 +400,6 @@ y_t=y_t.reshape(8,1)
 # 3500,3500,500,4000,4000,2500,3000,500,\
 # 3500,3000,2000,1000,2000,500,4000,1500]+500*(np.random.rand(N)-0.5))
 
-s = np.zeros([M, L]) + 1j * np.zeros([M, L])
-for m in range(M):
-    s[m] = np.exp(1j * 2 * np.pi * (m) * np.arange(L) / M) / np.sqrt(L);#np.sqrt(0.5)*(np.random.randn(1,L)+1j*np.random.randn(1,L))/np.sqrt(L);#
-Ls = 0
-Le = Ls + 4000
-dx = 333
-dy = dx
-dy = dx
-x_grid = np.arange(Ls, Le, dx)
-y_grid = np.arange(Ls, Le, dy)
-size_grid_x = len(x_grid)
-size_grid_y = len(y_grid)
-grid_all_points = [[i, j] for i in x_grid for j in y_grid]
-grid_all_points_a = np.array(grid_all_points)
-
-
-const_sqrt_200000000000 = np.sqrt(200000000000)
 
 
 def gen_mimo_samples(batch_size, SNR_dB, M, N, K, NOISE, H, R):
@@ -569,7 +554,7 @@ print('done')
 best_valid_accs = 0
 base_epoch = lr_decay_startpoint
 base_lr = lr
-optimState = {'learningRate': 0.01, 'weigthDecay': 0.0001}
+optimState = {'learningRate': 0.01, 'weigthDecay': 0.001}
 
 net = GetResNet(N, num_unroll, input_size, output_size)
 # print(net)
@@ -615,7 +600,7 @@ for epoch in range(epoch, num_epochs):
     net.train()
     start = time.time()
     for i in range(0, train_size, batch_size):
-        batch_label, batch_data = gen_batch(batch_size, M, N, K, 0, 0, 1) #NOISE, H, R)
+        batch_label, batch_data = gen_batch(batch_size, M, N, K,NOISE, H, R)
         batch_label.to(device)
         optimizer.zero_grad()
         pred_prob = net(batch_data).to(device)  # 0 or 1?!
